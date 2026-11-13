@@ -1,0 +1,14 @@
+<?xml version="1.0" encoding="utf-8"?>
+<shortcuts xmlns:android="http://schemas.android.com/apk/res/android">
+    <shortcut
+        android:shortcutId="record_now"
+        android:enabled="true"
+        android:icon="@drawable/ic_shortcut_rec"
+        android:shortcutShortLabel="@string/record_now"
+        android:shortcutLongLabel="@string/record_now_long">
+        <intent
+            android:action="com.roughhouse.app.RECORD_NOW"
+            android:targetPackage="com.roughhouse.app"
+            android:targetClass="com.roughhouse.app.MainActivity" />
+    </shortcut>
+</shortcuts>

@@ -39,7 +39,9 @@ import java.util.function.IntFunction;
 
 public class MainActivity extends Activity implements Engine.Listener {
     static final int SR = Engine.SR;
-    private static final int REQ_IMPORT = 7;
+    private static final int REQ_IMPORT = 7, REQ_BACKUP = 8;
+    static final String ACTION_RECORD_NOW = "com.roughhouse.app.RECORD_NOW";
+    private boolean pendingQuickRecord;
 
     final Handler h = new Handler(Looper.getMainLooper());
     Engine eng;
@@ -57,9 +59,12 @@ public class MainActivity extends Activity implements Engine.Listener {
     private Deck.Key rewKey, recKey, playKey, stopKey;
     private LinearLayout trackList;
     private Ruler ruler;
+    private TextView lyricStrip;
+    private java.util.TreeMap<Integer, String> lyricPins = new java.util.TreeMap<>();
     private final ArrayList<Row> rows = new ArrayList<>();
 
-    private Track armed, lastTake;
+    private Track armed;
+    private Runnable undoAction;   // reverses the last take, import, edit or bounce
     private long cursor;
     private boolean ticking, counterBars;
     private AlertDialog calDlg;
@@ -88,7 +93,54 @@ public class MainActivity extends Activity implements Engine.Listener {
             if (new File(d, "session.json").exists()) loaded = Jam.load(d);
         }
         openJam(loaded != null ? loaded : Jam.create(root));
-        if (!hasMic()) requestPermissions(new String[]{Manifest.permission.RECORD_AUDIO}, 1);
+        if (ACTION_RECORD_NOW.equals(getIntent() == null ? null : getIntent().getAction())) {
+            h.post(this::quickRecord);
+        } else if (!hasMic()) {
+            requestPermissions(new String[]{Manifest.permission.RECORD_AUDIO}, 1);
+        }
+    }
+
+    @Override
+    protected void onNewIntent(Intent intent) {
+        super.onNewIntent(intent);
+        setIntent(intent);
+        if (ACTION_RECORD_NOW.equals(intent.getAction())) h.post(this::quickRecord);
+    }
+
+    /** "record now" shortcut: fresh jam, recording straight away (no count-in). */
+    private void quickRecord() {
+        if (!hasMic()) {
+            pendingQuickRecord = true;
+            requestPermissions(new String[]{Manifest.permission.RECORD_AUDIO}, 2);
+            return;
+        }
+        if (eng.isRecording()) return;
+        if (eng.isPlaying()) eng.stop();
+        if (s.lengthFrames() > 0 || !s.tracks.isEmpty()) {
+            leaveCurrent();
+            openJam(Jam.create(root));
+        }
+        Track t = addTrack();
+        armed = t;
+        applyEngineSettings();
+        eng.play(0, false);
+        if (!eng.startRecording(t, 0)) {
+            eng.stop();
+            note("couldn't open the microphone");
+            return;
+        }
+        refreshAll();
+        startTicking();
+        note("recording a new jam. press REC or STOP when you're done.");
+    }
+
+    @Override
+    public void onRequestPermissionsResult(int req, String[] perms, int[] res) {
+        super.onRequestPermissionsResult(req, perms, res);
+        if (pendingQuickRecord && hasMic()) {
+            pendingQuickRecord = false;
+            quickRecord();
+        }
     }
 
     @Override
@@ -204,14 +256,22 @@ public class MainActivity extends Activity implements Engine.Listener {
         rl.setGravity(Gravity.CENTER);
         rulerRow.addView(rl, new LinearLayout.LayoutParams(dp(28), -2));
         ruler = new Ruler(this);
-        ruler.setContentDescription("timeline: tap or drag to move the playhead");
-        LinearLayout.LayoutParams rlp = new LinearLayout.LayoutParams(0, dp(30), 1);
+        ruler.setContentDescription("timeline: tap or drag to move the playhead, long-press to mark a section");
+        LinearLayout.LayoutParams rlp = new LinearLayout.LayoutParams(0, dp(42), 1);
         rlp.leftMargin = dp(6);
         rulerRow.addView(ruler, rlp);
         LinearLayout.LayoutParams rsp = new LinearLayout.LayoutParams(dp(34), dp(1));
         rsp.leftMargin = dp(6);
         rulerRow.addView(new View(this), rsp);
         col.addView(rulerRow);
+        lyricStrip = Ui.text(this, 15, Ui.CREAM, Ui.serifItalic);
+        lyricStrip.setGravity(Gravity.CENTER);
+        lyricStrip.setSingleLine(true);
+        lyricStrip.setEllipsize(TextUtils.TruncateAt.END);
+        lyricStrip.setPadding(dp(14), dp(2), dp(14), dp(2));
+        lyricStrip.setVisibility(View.GONE);
+        lyricStrip.setOnClickListener(v -> showLyrics());
+        col.addView(lyricStrip);
 
         // --- channel strips
         ScrollView sv = new ScrollView(this);
@@ -255,9 +315,12 @@ public class MainActivity extends Activity implements Engine.Listener {
         clickChip.setOnLongClickListener(v -> { showSettings(); return true; });
         undoChip = Ui.chip(this, "UNDO");
         undoChip.setOnClickListener(v -> onUndo());
+        TextView lyr = Ui.chip(this, "LYRICS");
+        lyr.setOnClickListener(v -> showLyrics());
         small.addView(loopChip, new LinearLayout.LayoutParams(0, -2, 1));
         small.addView(clickChip, weighted(1, 6));
         small.addView(undoChip, weighted(1, 6));
+        small.addView(lyr, weighted(1.2f, 6));
         tp.addView(small);
         col.addView(tp);
 
@@ -394,7 +457,7 @@ public class MainActivity extends Activity implements Engine.Listener {
         Ui.setChip(tuneChip, eng.monitoring, Ui.GREEN);
         Ui.setChip(loopChip, s.loop, Ui.AMBER);
         Ui.setChip(clickChip, s.metronome, Ui.YELLOW);
-        undoChip.setAlpha(lastTake != null && !eng.isRecording() ? 1f : 0.4f);
+        undoChip.setAlpha(undoAction != null && !eng.isRecording() ? 1f : 0.4f);
         boolean playing = eng.isPlaying();
         playKey.set(playing, playing);
         recKey.set(eng.isRecording(), eng.isRecording());
@@ -411,6 +474,17 @@ public class MainActivity extends Activity implements Engine.Listener {
 
     private static String fmtBpm(float b) {
         return b == Math.round(b) ? String.valueOf(Math.round(b)) : String.format(Locale.US, "%.1f", b);
+    }
+
+    /** Shows the lyric line pinned to the bar under the playhead. */
+    private void updateLyricStrip() {
+        if (lyricPins.isEmpty()) { lyricStrip.setVisibility(View.GONE); return; }
+        long bar = (long) Math.floor(Math.max(0, playhead()) / s.barFrames(SR)) + 1;
+        java.util.Map.Entry<Integer, String> e = lyricPins.floorEntry((int) Math.min(Integer.MAX_VALUE, bar));
+        String line = e != null ? e.getValue() : lyricPins.firstEntry().getValue();
+        lyricStrip.setText(line);
+        lyricStrip.setTextColor(e != null ? Ui.CREAM : Ui.FAINT);
+        lyricStrip.setVisibility(View.VISIBLE);
     }
 
     /** Counter, cassette label and reels. */
@@ -444,6 +518,7 @@ public class MainActivity extends Activity implements Engine.Listener {
             counter.caption = "TAPE TIME   (TAP FOR BARS)";
         }
         counter.invalidate();
+        updateLyricStrip();
     }
 
     private final Runnable tick = new Runnable() {
@@ -565,24 +640,33 @@ public class MainActivity extends Activity implements Engine.Listener {
     }
 
     private void onUndo() {
-        Track t = lastTake;
-        if (t == null || eng.isRecording()) return;
+        if (undoAction == null || eng.isRecording()) return;
         if (eng.isPlaying()) eng.stop();
-        if (t.undo == null || t.undo.length == 0) {
-            s.tracks.remove(t);
-        } else {
-            t.data = t.undo;
-            t.computePeaks();
-            t.invalidateAnalysis();
-            t.dirty = true;
-        }
-        t.undo = null;
-        lastTake = null;
+        Runnable u = undoAction;
+        undoAction = null;
+        u.run();
         armed = null;
         save();
         rebuildRows();
         refreshAll();
+        if (trackView != null) trackView.invalidate();
         note("undone");
+    }
+
+    /** Remembers how to put a track's audio back to what it was before a change. */
+    private void undoAudio(Track t, short[] before) {
+        undoAction = () -> {
+            t.data = before;
+            t.computePeaks();
+            t.invalidateAnalysis();
+            t.dirty = true;
+            if (!s.tracks.contains(t)) s.tracks.add(t);
+        };
+    }
+
+    /** Undo for a track that didn't exist before (import, new take on an empty track). */
+    private void undoAdded(Track t) {
+        undoAction = () -> s.tracks.remove(t);
     }
 
     private void toggleTune() {
@@ -610,7 +694,9 @@ public class MainActivity extends Activity implements Engine.Listener {
     }
 
     @Override public void onTake(Track t) {
-        lastTake = t;
+        if (t.undo == null || t.undo.length == 0) undoAdded(t);
+        else undoAudio(t, t.undo);
+        t.undo = null;
         armed = null;
         save();
         refreshAll();
@@ -975,6 +1061,10 @@ public class MainActivity extends Activity implements Engine.Listener {
             items.add("analyze notes, key, tempo and chords");
             acts.add(() -> analyzeTrack(t, A_ALL));
         }
+        if (!t.isEmpty()) {
+            items.add("edit…");
+            acts.add(() -> showEditMenu(t));
+        }
         items.add(t.vocal ? "pitch monitor: on (vocal track)" : "pitch monitor: off");
         acts.add(() -> { t.vocal = !t.vocal; save(); refreshAll(); note(t.vocal ? "the tuner will show while recording this track." : "pitch monitor off for this track."); });
         items.add("rename");
@@ -1003,20 +1093,20 @@ public class MainActivity extends Activity implements Engine.Listener {
         items.add("clear audio");
         acts.add(() -> {
             if (eng.isPlaying()) eng.stop();
-            t.undo = t.data;
+            undoAudio(t, t.data);
             t.data = new short[0];
             t.dirty = true;
             t.invalidateAnalysis();
             t.computePeaks();
-            lastTake = t;
             save();
             refreshAll();
         });
         items.add("delete track");
         acts.add(() -> show(dlg(null).setMessage("delete " + t.name + "?")
                 .setPositiveButton("DELETE", (d2, w2) -> {
+                    int at = s.tracks.indexOf(t);
                     s.tracks.remove(t);
-                    if (lastTake == t) lastTake = null;
+                    undoAction = () -> s.tracks.add(Math.min(at, s.tracks.size()), t);
                     if (armed == t) armed = null;
                     save();
                     rebuildRows();
@@ -1027,12 +1117,12 @@ public class MainActivity extends Activity implements Engine.Listener {
     }
 
     // analysis sections (bit flags so any mix can be shown together)
-    static final int A_TEMPO = 1, A_KEY = 2, A_MELODY = 4, A_CHORDS = 8, A_RANGE = 16, A_FITS = 32, A_ALL = 63;
+    static final int A_TEMPO = 1, A_KEY = 2, A_MELODY = 4, A_CHORDS = 8, A_RANGE = 16, A_FITS = 32, A_SUGGEST = 64, A_ALL = 127;
 
     private void showAnalysisMenu(Track t) {
-        CharSequence[] items = {"tempo", "key", "melody", "chords by bar", "range and tuning",
+        CharSequence[] items = {"tempo", "key", "melody", "chords by bar", "chords for the melody", "range and tuning",
                 "chords that fit the key", "see all analysis", "analyze again"};
-        int[] map = {A_TEMPO, A_KEY, A_MELODY, A_CHORDS, A_RANGE, A_FITS, A_ALL, -1};
+        int[] map = {A_TEMPO, A_KEY, A_MELODY, A_CHORDS, A_SUGGEST, A_RANGE, A_FITS, A_ALL, -1};
         list("analysis", items, w -> {
             if (map[w] < 0) analyzeTrack(t, A_ALL);
             else showAnalysis(t, map[w]);
@@ -1040,15 +1130,22 @@ public class MainActivity extends Activity implements Engine.Listener {
     }
 
     private void showMenu() {
-        list(null, new CharSequence[]{"export jam…", "import audio…", "circle of fifths", "settings",
-                "calibrate latency", "rename jam", "delete jam"}, w -> {
+        String[] items = {"export jam…", "import audio…", "sections…", "bounce tracks…", "lyrics",
+                "back up or share this jam", "open a jam backup…", "circle of fifths", "settings",
+                "calibrate latency", "rename jam", "delete jam"};
+        list(null, items, w -> {
             switch (w) {
                 case 0: exportJam(); break;
                 case 1: pickImport(); break;
-                case 2: showCircle(); break;
-                case 3: showSettings(); break;
-                case 4: calibrate(); break;
-                case 5: renameJam(); break;
+                case 2: showSections(); break;
+                case 3: showBounce(); break;
+                case 4: showLyrics(); break;
+                case 5: backupJam(); break;
+                case 6: pickBackup(); break;
+                case 7: showCircle(); break;
+                case 8: showSettings(); break;
+                case 9: calibrate(); break;
+                case 10: renameJam(); break;
                 default: confirmDeleteJam(s.dir, s.name); break;
             }
         });
@@ -1202,6 +1299,18 @@ public class MainActivity extends Activity implements Engine.Listener {
             if (f.chords.isEmpty()) para(l, "no clear chords. that's normal for a single melody line.", 14, Ui.DIM);
             else para(l, chordText(f), 14, Ui.CREAM);
         }
+        if ((which & A_SUGGEST) != 0) {
+            if (all) heading(l, "chords for the melody"); else title = "chords for the melody · " + t.name;
+            if (root < 0) {
+                para(l, "set a key first (KEY button, or USE FOR JAM above) so chords can be picked from it.", 14, Ui.DIM);
+            } else if (f.notes.isEmpty()) {
+                para(l, "no single-note melody to harmonize.", 14, Ui.DIM);
+            } else {
+                ArrayList<Theory.Suggestion> sg = Theory.harmonize(f.notes, root, minor, s.beatFrames(SR), Math.max(1, s.beatsPerBar));
+                para(l, "chords from " + Analyzer.keyName(root, minor) + " that share the most notes with what you sang or played in each bar.", 13, Ui.DIM);
+                para(l, suggestionText(sg), 14, Ui.CREAM);
+            }
+        }
         if ((which & A_FITS) != 0) {
             if (root >= 0) {
                 if (all) heading(l, "writing in " + Analyzer.keyName(root, minor));
@@ -1249,6 +1358,18 @@ public class MainActivity extends Activity implements Engine.Listener {
         return oct + (oct == 1 ? " octave" : " octaves") + (rest > 0 ? " + " + rest : "");
     }
 
+    private static String suggestionText(ArrayList<Theory.Suggestion> sg) {
+        StringBuilder b = new StringBuilder();
+        int perLine = 0;
+        for (Theory.Suggestion g : sg) {
+            if (b.length() > 0) b.append(perLine % 2 == 0 ? "\n" : "      ");
+            b.append("bar ").append(g.bar + 1).append(":  ").append(g.best);
+            if (g.alt != null) b.append("  (or ").append(g.alt).append(")");
+            perLine++;
+        }
+        return b.toString();
+    }
+
     private static String chordText(Analyzer.Full f) {
         StringBuilder b = new StringBuilder();
         int i = 0;
@@ -1263,6 +1384,485 @@ public class MainActivity extends Activity implements Engine.Listener {
             i = j + 1;
         }
         return b.toString();
+    }
+
+    // ================================================================= editing
+
+    private String posText() {
+        double bf = s.beatFrames(SR);
+        long beat = (long) Math.floor(Math.max(0, playhead()) / bf);
+        int bpb = Math.max(1, s.beatsPerBar);
+        return "bar " + (beat / bpb + 1) + "." + (beat % bpb + 1);
+    }
+
+    /** Trim, split, move and fade, all relative to the playhead. */
+    void showEditMenu(Track t) {
+        if (eng.isRecording() || t.isEmpty()) return;
+        long p = Math.max(0, playhead());
+        String at = posText();
+        CharSequence[] items = {
+                "trim everything before the playhead",
+                "trim everything after the playhead",
+                "split at the playhead (the rest goes to a new track)",
+                "move so it starts at the playhead",
+                "nudge earlier or later…",
+                "fade in up to the playhead",
+                "fade out from the playhead",
+        };
+        list("edit " + t.name + " · " + at, items, w -> {
+            switch (w) {
+                case 0: applyEdit(t, Editor.trimBefore(t.data, p), "trimmed before " + at); break;
+                case 1: applyEdit(t, Editor.trimAfter(t.data, p), "trimmed after " + at); break;
+                case 2: split(t, p, at); break;
+                case 3: {
+                    int first = Editor.firstSound(t.data);
+                    if (first < 0) { note("this track is silent."); return; }
+                    applyEdit(t, Editor.shift(t.data, p - first), "moved to start at " + at);
+                    break;
+                }
+                case 4: showNudge(t); break;
+                case 5: applyEdit(t, Editor.fadeInTo(t.data, p), "faded in up to " + at); break;
+                default: applyEdit(t, Editor.fadeOutFrom(t.data, p), "fading out from " + at); break;
+            }
+        });
+    }
+
+    private void applyEdit(Track t, short[] nd, String msg) {
+        if (eng.isPlaying()) eng.stop();
+        undoAudio(t, t.data);
+        t.data = nd;
+        t.dirty = true;
+        t.invalidateAnalysis();
+        t.computePeaks();
+        save();
+        refreshAll();
+        if (trackView != null) trackView.invalidate();
+        note(msg + ". UNDO puts it back.");
+    }
+
+    private void split(Track t, long p, String at) {
+        if (p <= 0 || p >= t.data.length) { note("move the playhead inside the track to split it."); return; }
+        if (eng.isPlaying()) eng.stop();
+        short[] before = t.data;
+        Track b = new Track(s.nextId(), t.name + " b");
+        b.copySettingsFrom(t);
+        b.vocal = t.vocal;
+        try {
+            b.data = Editor.tail(before, p);
+            t.data = Editor.trimAfter(before, p);
+        } catch (OutOfMemoryError e) {
+            note("not enough memory to split this track.");
+            return;
+        }
+        b.dirty = true;
+        t.dirty = true;
+        b.computePeaks();
+        t.computePeaks();
+        t.invalidateAnalysis();
+        s.tracks.add(s.tracks.indexOf(t) + 1, b);
+        undoAction = () -> {
+            s.tracks.remove(b);
+            t.data = before;
+            t.computePeaks();
+            t.invalidateAnalysis();
+            t.dirty = true;
+        };
+        save();
+        rebuildRows();
+        refreshAll();
+        note("split at " + at + ". the second half is on " + b.name + ".");
+    }
+
+    private void showNudge(Track t) {
+        final short[] original = t.data;
+        final long[] moved = {0};
+        LinearLayout l = body();
+        TextView amount = para(l, "moved 0 ms", 15, Ui.AMBER);
+        para(l, "use this to line up a take that's a little early or late.", 12, Ui.DIM);
+        LinearLayout row = chipRow(l);
+        long beat = Math.round(s.beatFrames(SR));
+        long[] steps = {-beat, -SR / 100, SR / 100, beat};
+        String[] names = {"−1 BEAT", "−10 MS", "+10 MS", "+1 BEAT"};
+        for (int i = 0; i < steps.length; i++) {
+            long st = steps[i];
+            addChip(row, names[i], v -> {
+                if (eng.isPlaying()) eng.stop();
+                moved[0] += st;
+                t.data = Editor.shift(original, moved[0]);
+                t.computePeaks();
+                t.dirty = true;
+                amount.setText(String.format(Locale.US, "moved %+d ms", Math.round(moved[0] * 1000.0 / SR)));
+                refreshAll();
+                if (trackView != null) trackView.invalidate();
+            });
+        }
+        show(dlg("nudge " + t.name).setView(l).setPositiveButton("DONE", null)
+                .setOnDismissListener(d -> {
+                    if (moved[0] != 0) {
+                        t.invalidateAnalysis();
+                        undoAudio(t, original);
+                        save();
+                        refreshAll();
+                    }
+                }));
+    }
+
+    // ================================================================== lyrics
+
+    private void showLyrics() {
+        android.app.Dialog d = new android.app.Dialog(this, R.style.DeckFull);
+        LinearLayout col = new LinearLayout(this);
+        col.setOrientation(LinearLayout.VERTICAL);
+        col.setBackgroundColor(Ui.BODY);
+        col.setPadding(dp(12), dp(10), dp(12), dp(12));
+        LinearLayout top = new LinearLayout(this);
+        top.setGravity(Gravity.CENTER_VERTICAL);
+        TextView back = Ui.chip(this, "BACK");
+        back.setOnClickListener(v -> d.dismiss());
+        top.addView(back);
+        TextView title = Ui.text(this, 20, Ui.CREAM, Ui.serifItalic);
+        title.setText("lyrics · " + s.name);
+        title.setSingleLine(true);
+        title.setEllipsize(TextUtils.TruncateAt.END);
+        title.setPadding(dp(12), 0, dp(8), 0);
+        top.addView(title, new LinearLayout.LayoutParams(0, -2, 1));
+        TextView pin = Ui.chip(this, "PIN TO PLAYHEAD");
+        top.addView(pin);
+        col.addView(top);
+        TextView help = Ui.text(this, 12, Ui.DIM, Ui.sans);
+        help.setText("start a line with [9] to pin it to bar 9. pinned lines show under the timeline while the jam plays. PIN TO PLAYHEAD adds the tag for the current bar.");
+        help.setPadding(0, dp(8), 0, dp(8));
+        col.addView(help);
+        EditText e = new EditText(this);
+        e.setText(s.lyrics);
+        e.setTypeface(Ui.serif);
+        e.setTextSize(18);
+        e.setTextColor(Ui.CREAM);
+        e.setGravity(Gravity.TOP);
+        e.setInputType(InputType.TYPE_CLASS_TEXT | InputType.TYPE_TEXT_FLAG_MULTI_LINE | InputType.TYPE_TEXT_FLAG_CAP_SENTENCES);
+        e.setBackground(Ui.rounded(Ui.LANE, dp(6), Ui.PANEL_EDGE));
+        e.setPadding(dp(12), dp(10), dp(12), dp(10));
+        col.addView(e, new LinearLayout.LayoutParams(-1, 0, 1));
+        pin.setOnClickListener(v -> {
+            long bar = (long) Math.floor(Math.max(0, playhead()) / s.barFrames(SR)) + 1;
+            int c = Math.max(0, e.getSelectionStart());
+            String txt = e.getText().toString();
+            int lineStart = txt.lastIndexOf('\n', Math.max(0, c - 1)) + 1;
+            if (c == 0) lineStart = 0;
+            e.getText().insert(lineStart, "[" + bar + "] ");
+        });
+        d.setContentView(col);
+        d.setOnDismissListener(x -> {
+            s.lyrics = e.getText().toString();
+            lyricPins = Jam.pinnedLyrics(s.lyrics);
+            save();
+            refreshAll();
+        });
+        if (d.getWindow() != null) {
+            d.getWindow().setLayout(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT);
+            d.getWindow().setSoftInputMode(WindowManager.LayoutParams.SOFT_INPUT_ADJUST_RESIZE);
+        }
+        d.show();
+    }
+
+    // ================================================================ sections
+
+    static final String[] SECTION_NAMES = {"intro", "verse", "pre-chorus", "chorus", "bridge", "solo", "outro"};
+
+    /** Long-press on the timeline: add a section at that bar, or edit the one that's there. */
+    void markerMenu(long frame) {
+        int bar = (int) Math.floor(Math.max(0, frame) / s.barFrames(SR));
+        Jam.Marker existing = null;
+        for (Jam.Marker m : s.markers) if (m.bar == bar) existing = m;
+        if (existing != null) {
+            final Jam.Marker m = existing;
+            list(m.name + " · bar " + (bar + 1), new CharSequence[]{"loop this section", "rename", "delete"}, w -> {
+                if (w == 0) loopSection(m);
+                else if (w == 1) prompt("rename section", m.name, v -> { m.name = v.toLowerCase(Locale.getDefault()); save(); refreshAll(); });
+                else { s.markers.remove(m); save(); refreshAll(); }
+            });
+            return;
+        }
+        CharSequence[] items = new CharSequence[SECTION_NAMES.length + 1];
+        for (int i = 0; i < SECTION_NAMES.length; i++) items[i] = SECTION_NAMES[i];
+        items[SECTION_NAMES.length] = "other name…";
+        list("mark bar " + (bar + 1) + " as", items, w -> {
+            if (w < SECTION_NAMES.length) addMarker(bar, SECTION_NAMES[w]);
+            else prompt("section name", "", v -> addMarker(bar, v.toLowerCase(Locale.getDefault())));
+        });
+    }
+
+    private void addMarker(int bar, String name) {
+        s.markers.add(new Jam.Marker(bar, name));
+        save();
+        refreshAll();
+        note(name + " starts at bar " + (bar + 1) + ". tap its label on the timeline to loop it.");
+    }
+
+    /** Loops from a section's bar to the next section (or the end). */
+    void loopSection(Jam.Marker m) {
+        double bar = s.barFrames(SR);
+        int endBar = -1;
+        for (Jam.Marker o : s.sortedMarkers()) if (o.bar > m.bar) { endBar = o.bar; break; }
+        long in = Math.round(m.bar * bar);
+        long out = endBar > 0 ? Math.round(endBar * bar) : -1;
+        if (out < 0 && s.lengthFrames() <= in) { note("there's nothing recorded in " + m.name + " yet."); return; }
+        s.loopIn = in;
+        s.loopOut = out;
+        s.loop = true;
+        seekTo(in);
+        refreshAll();
+        note("looping " + m.name + (endBar > 0 ? " (bars " + (m.bar + 1) + " to " + endBar + ")" : " to the end"));
+    }
+
+    private void showSections() {
+        java.util.List<Jam.Marker> ms = s.sortedMarkers();
+        if (ms.isEmpty()) { note("long-press the timeline above the tracks to mark a section."); return; }
+        CharSequence[] items = new CharSequence[ms.size()];
+        for (int i = 0; i < ms.size(); i++) items[i] = ms.get(i).name + "\nbar " + (ms.get(i).bar + 1);
+        list("sections (tap to loop)", items, w -> loopSection(ms.get(w)));
+    }
+
+    // ================================================================ bouncing
+
+    private void showBounce() {
+        java.util.List<Track> ts = new ArrayList<>();
+        for (Track t : s.tracks) if (!t.isEmpty()) ts.add(t);
+        if (ts.size() < 2) { note("you need at least two tracks with audio to bounce."); return; }
+        CharSequence[] names = new CharSequence[ts.size()];
+        boolean[] checked = new boolean[ts.size()];
+        for (int i = 0; i < ts.size(); i++) names[i] = ts.get(i).name;
+        show(dlg("bounce which tracks?")
+                .setMultiChoiceItems(names, checked, (d, w, c) -> checked[w] = c)
+                .setPositiveButton("NEXT", (d, w) -> {
+                    ArrayList<Track> pick = new ArrayList<>();
+                    for (int i = 0; i < ts.size(); i++) if (checked[i]) pick.add(ts.get(i));
+                    if (pick.size() < 2) { note("pick at least two tracks."); return; }
+                    list("bounce " + pick.size() + " tracks, then", new CharSequence[]{
+                            "keep the originals, muted", "delete the originals"}, k -> runBounce(pick, k == 1));
+                })
+                .setNegativeButton("CANCEL", null));
+    }
+
+    /** Mixes the chosen tracks (with their effects) down to one new mono track. */
+    private void runBounce(ArrayList<Track> pick, boolean deleteOriginals) {
+        if (eng.isPlaying()) eng.stop();
+        AlertDialog wait = busy("bouncing " + pick.size() + " tracks…");
+        final Jam mixJam = new Jam(s.dir);
+        mixJam.bpm = s.bpm;
+        mixJam.beatsPerBar = s.beatsPerBar;
+        mixJam.beatUnit = s.beatUnit;
+        mixJam.master = 1f;
+        StringBuilder nm = new StringBuilder("bounce of ");
+        for (Track t : pick) {
+            Track c = new Track(t.id, t.name);
+            c.copySettingsFrom(t);
+            c.pan = 0;
+            c.data = t.data;
+            mixJam.tracks.add(c);
+            nm.append(s.tracks.indexOf(t) + 1).append(pick.indexOf(t) < pick.size() - 1 ? "+" : "");
+        }
+        new Thread(() -> {
+            short[] out = null;
+            try {
+                long len = mixJam.lengthFrames() + SR;
+                out = new short[(int) len];
+                Mixer m = new Mixer(mixJam, SR);
+                float[] buf = new float[2048 * 2];
+                long[] pos = new long[2048];
+                for (long f = 0; f < len; f += 2048) {
+                    int n = (int) Math.min(2048, len - f);
+                    for (int i = 0; i < n; i++) pos[i] = f + i;
+                    m.render(buf, pos, n, null, false);
+                    for (int i = 0; i < n; i++) {
+                        float v = (buf[2 * i] + buf[2 * i + 1]) * 0.5f * 32767f;
+                        out[(int) f + i] = (short) Math.max(-32768, Math.min(32767, Math.round(v)));
+                    }
+                }
+                int last = Editor.lastSound(out);
+                if (last >= 0 && last + SR / 10 < out.length) out = Arrays.copyOf(out, last + SR / 10);
+            } catch (OutOfMemoryError e) {
+                out = null;
+            }
+            final short[] mixed = out;
+            h.post(() -> {
+                wait.dismiss();
+                if (mixed == null) { note("not enough memory to bounce these tracks."); return; }
+                Track b = new Track(s.nextId(), nm.toString());
+                b.data = mixed;
+                b.dirty = true;
+                b.computePeaks();
+                int at = s.tracks.indexOf(pick.get(pick.size() - 1)) + 1;
+                s.tracks.add(Math.min(at, s.tracks.size()), b);
+                final ArrayList<Track> removed = new ArrayList<>();
+                final ArrayList<Integer> removedAt = new ArrayList<>();
+                final boolean[] wasMuted = new boolean[pick.size()];
+                for (int i = 0; i < pick.size(); i++) {
+                    Track t = pick.get(i);
+                    wasMuted[i] = t.mute;
+                    if (deleteOriginals) {
+                        removedAt.add(s.tracks.indexOf(t));
+                        removed.add(t);
+                        s.tracks.remove(t);
+                    } else {
+                        t.mute = true;
+                    }
+                }
+                undoAction = () -> {
+                    s.tracks.remove(b);
+                    for (int i = removed.size() - 1; i >= 0; i--) {
+                        s.tracks.add(Math.min(removedAt.get(i), s.tracks.size()), removed.get(i));
+                    }
+                    for (int i = 0; i < pick.size(); i++) pick.get(i).mute = wasMuted[i];
+                };
+                save();
+                rebuildRows();
+                refreshAll();
+                note("bounced to " + b.name + (deleteOriginals ? "." : ". the originals are muted."));
+            });
+        }, "rh-bounce").start();
+    }
+
+    // ==================================================================== MIDI
+
+    private void exportMidi() {
+        ArrayList<Midi.Part> parts = new ArrayList<>();
+        ArrayList<Midi.ChordAt> chords = new ArrayList<>();
+        double bar = s.barFrames(SR);
+        Analyzer.Full firstMelody = null;
+        for (Track t : s.tracks) {
+            if (t.analysis == null) continue;
+            if (!t.analysis.notes.isEmpty()) {
+                Midi.Part p = new Midi.Part();
+                p.name = t.name;
+                p.notes = t.analysis.notes;
+                parts.add(p);
+                if (firstMelody == null) firstMelody = t.analysis;
+            }
+            if (chords.isEmpty() && !t.analysis.chords.isEmpty()) {
+                for (Analyzer.Chord c : t.analysis.chords) {
+                    Midi.ChordAt ca = new Midi.ChordAt();
+                    ca.start = Math.round(c.bar * bar);
+                    ca.len = Math.round(bar);
+                    ca.midis = Midi.voice(c.name);
+                    chords.add(ca);
+                }
+            }
+        }
+        int root = s.keyRoot >= 0 ? s.keyRoot : (firstMelody != null ? firstMelody.base.keyRoot : -1);
+        boolean minor = s.keyRoot >= 0 ? s.keyMinor : firstMelody != null && firstMelody.base.minor;
+        if (chords.isEmpty() && firstMelody != null && root >= 0) {
+            for (Theory.Suggestion g : Theory.harmonize(firstMelody.notes, root, minor, s.beatFrames(SR), Math.max(1, s.beatsPerBar))) {
+                Midi.ChordAt ca = new Midi.ChordAt();
+                ca.start = Math.round(g.bar * bar);
+                ca.len = Math.round(bar);
+                ca.midis = Midi.voice(g.best);
+                chords.add(ca);
+            }
+        }
+        if (parts.isEmpty() && chords.isEmpty()) {
+            note("analyze a track first (long-press it) so there are notes or chords to export.");
+            return;
+        }
+        try {
+            android.content.ContentValues v = new android.content.ContentValues();
+            String fname = s.name.replaceAll("[^A-Za-z0-9 _-]", "").trim();
+            if (fname.isEmpty()) fname = "Roughhouse jam";
+            v.put(android.provider.MediaStore.MediaColumns.DISPLAY_NAME, fname + ".mid");
+            v.put(android.provider.MediaStore.MediaColumns.MIME_TYPE, "audio/midi");
+            v.put(android.provider.MediaStore.MediaColumns.RELATIVE_PATH, android.os.Environment.DIRECTORY_MUSIC + "/Roughhouse");
+            Uri u = getContentResolver().insert(android.provider.MediaStore.Audio.Media.getContentUri(
+                    android.provider.MediaStore.VOLUME_EXTERNAL_PRIMARY), v);
+            if (u == null) throw new IOException("couldn't create the file");
+            try (java.io.OutputStream os = getContentResolver().openOutputStream(u)) {
+                if (os == null) throw new IOException("couldn't open the file");
+                Midi.write(os, s, SR, parts, chords);
+            }
+            note("saved to Music/Roughhouse");
+            share(u, "audio/midi", "share MIDI");
+        } catch (IOException e) {
+            note("MIDI export failed: " + e.getMessage());
+        }
+    }
+
+    private void share(Uri u, String mime, String title) {
+        Intent send = new Intent(Intent.ACTION_SEND);
+        send.setType(mime);
+        send.putExtra(Intent.EXTRA_STREAM, u);
+        send.addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION);
+        startActivity(Intent.createChooser(send, title));
+    }
+
+    // ================================================================= backups
+
+    private void backupJam() {
+        if (s.lengthFrames() == 0) { note("there's nothing in this jam to back up yet."); return; }
+        if (eng.isPlaying()) eng.stop();
+        save();
+        AlertDialog wait = busy("packing up the jam…");
+        final Jam cur = s;
+        new Thread(() -> {
+            String err = null;
+            Uri u = null;
+            try {
+                android.content.ContentValues v = new android.content.ContentValues();
+                String fname = cur.name.replaceAll("[^A-Za-z0-9 _-]", "").trim();
+                if (fname.isEmpty()) fname = "jam";
+                v.put(android.provider.MediaStore.MediaColumns.DISPLAY_NAME, fname + Backup.EXT);
+                v.put(android.provider.MediaStore.MediaColumns.MIME_TYPE, "application/zip");
+                v.put(android.provider.MediaStore.MediaColumns.RELATIVE_PATH, android.os.Environment.DIRECTORY_DOWNLOADS + "/Roughhouse");
+                u = getContentResolver().insert(android.provider.MediaStore.Downloads.EXTERNAL_CONTENT_URI, v);
+                if (u == null) throw new IOException("couldn't create the file");
+                try (java.io.OutputStream os = getContentResolver().openOutputStream(u)) {
+                    if (os == null) throw new IOException("couldn't open the file");
+                    Backup.write(cur, new java.io.BufferedOutputStream(os, 1 << 16));
+                }
+            } catch (IOException e) {
+                err = e.getMessage();
+            }
+            final String error = err;
+            final Uri done = u;
+            h.post(() -> {
+                wait.dismiss();
+                if (error != null) { note("backup failed: " + error); return; }
+                note("saved to Download/Roughhouse");
+                share(done, "application/zip", "share jam");
+            });
+        }, "rh-backup").start();
+    }
+
+    private void pickBackup() {
+        Intent i = new Intent(Intent.ACTION_OPEN_DOCUMENT);
+        i.addCategory(Intent.CATEGORY_OPENABLE);
+        i.setType("*/*");
+        i.putExtra(Intent.EXTRA_MIME_TYPES, new String[]{"application/zip", "application/octet-stream", "application/x-zip-compressed"});
+        startActivityForResult(i, REQ_BACKUP);
+    }
+
+    private void restoreBackup(Uri uri) {
+        if (eng.isPlaying()) eng.stop();
+        AlertDialog wait = busy("opening the backup…");
+        new Thread(() -> {
+            File dir = null;
+            String err = null;
+            try (java.io.InputStream in = getContentResolver().openInputStream(uri)) {
+                if (in == null) throw new IOException("couldn't open that file");
+                dir = Backup.read(new java.io.BufferedInputStream(in, 1 << 16), root);
+            } catch (IOException e) {
+                err = e.getMessage();
+            }
+            final File d = dir;
+            final String error = err;
+            h.post(() -> {
+                wait.dismiss();
+                if (error != null) { note(error); return; }
+                Jam nj = Jam.load(d);
+                if (nj == null) { Jam.deleteDir(d); note("that backup couldn't be read."); return; }
+                leaveCurrent();
+                openJam(nj);
+                note("opened " + nj.name + ".");
+            });
+        }, "rh-restore").start();
     }
 
     // =============================================================== track view
@@ -1317,7 +1917,10 @@ public class MainActivity extends Activity implements Engine.Listener {
             else if (!t.isEmpty()) analyzeTrack(t, A_ALL);
         });
         TextView fit = Ui.chip(this, "FIT");
+        TextView ed = Ui.chip(this, "EDIT");
+        ed.setOnClickListener(v -> { if (!t.isEmpty()) showEditMenu(t); });
         actions.addView(an, new LinearLayout.LayoutParams(0, -2, 1));
+        actions.addView(ed, weighted(1, 6));
         actions.addView(fit, weighted(1, 6));
         col.addView(actions);
 
@@ -1387,6 +1990,10 @@ public class MainActivity extends Activity implements Engine.Listener {
     @Override
     protected void onActivityResult(int req, int result, Intent data) {
         super.onActivityResult(req, result, data);
+        if (req == REQ_BACKUP && result == RESULT_OK && data != null && data.getData() != null) {
+            restoreBackup(data.getData());
+            return;
+        }
         if (req != REQ_IMPORT || result != RESULT_OK || data == null || data.getData() == null) return;
         final Uri uri = data.getData();
         if (eng.isPlaying()) eng.stop();
@@ -1414,9 +2021,8 @@ public class MainActivity extends Activity implements Engine.Listener {
                 t.data = d.data;
                 t.dirty = true;
                 t.computePeaks();
-                t.undo = new short[0];
                 s.tracks.add(t);
-                lastTake = t;
+                undoAdded(t);
                 armed = null;
                 save();
                 rebuildRows();
@@ -1468,9 +2074,10 @@ public class MainActivity extends Activity implements Engine.Listener {
         s = nj;
         eng.s = s;
         armed = null;
-        lastTake = null;
+        undoAction = null;
         cursor = 0;
         prefs.edit().putString("last", s.dir.getName()).apply();
+        lyricPins = Jam.pinnedLyrics(s.lyrics);
         rebuildRows();
         refreshAll();
     }
@@ -1551,9 +2158,13 @@ public class MainActivity extends Activity implements Engine.Listener {
     private void exportJam() {
         if (s.lengthFrames() == 0) { note("nothing to export yet."); return; }
         Exporter.Format[] fs = Exporter.Format.values();
-        CharSequence[] items = new CharSequence[fs.length];
+        CharSequence[] items = new CharSequence[fs.length + 1];
         for (int i = 0; i < fs.length; i++) items[i] = fs[i].label + "\n" + fs[i].hint;
-        list("export jam as", items, w -> runExport(fs[w]));
+        items[fs.length] = "MIDI\nnotes and chords from analyzed tracks";
+        list("export jam as", items, w -> {
+            if (w == fs.length) exportMidi();
+            else runExport(fs[w]);
+        });
     }
 
     private void runExport(Exporter.Format fmt) {

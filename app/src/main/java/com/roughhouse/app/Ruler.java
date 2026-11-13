@@ -3,6 +3,7 @@ package com.roughhouse.app;
 import android.graphics.Canvas;
 import android.graphics.Paint;
 import android.graphics.Path;
+import android.view.GestureDetector;
 import android.view.MotionEvent;
 import android.view.View;
 
@@ -14,10 +15,61 @@ final class Ruler extends View {
     private final MainActivity a;
     private final Paint p = new Paint(Paint.ANTI_ALIAS_FLAG), fill = new Paint();
     private final Path tri = new Path();
+    private final GestureDetector gd;
 
     Ruler(MainActivity a) {
         super(a);
         this.a = a;
+        gd = new GestureDetector(a, new GestureDetector.SimpleOnGestureListener() {
+            @Override public boolean onDown(MotionEvent e) {
+                if (!inLabels(e)) seekAt(e.getX());
+                return true;
+            }
+
+            @Override public boolean onScroll(MotionEvent e1, MotionEvent e2, float dx, float dy) {
+                seekAt(e2.getX());
+                return true;
+            }
+
+            @Override public boolean onSingleTapUp(MotionEvent e) {
+                Jam.Marker m = inLabels(e) ? markerAt(e.getX()) : null;
+                if (m != null) a.loopSection(m);
+                else seekAt(e.getX());
+                return true;
+            }
+
+            @Override public void onLongPress(MotionEvent e) {
+                a.markerMenu(frameAt(e.getX()));
+            }
+        });
+    }
+
+    private float labelH() { return 13 * Ui.density; }
+
+    private boolean inLabels(MotionEvent e) { return e.getY() < labelH() + 4 * Ui.density; }
+
+    private long frameAt(float x) {
+        float cx = Math.max(0, Math.min(contentW(), x));
+        return (long) (cx / contentW() * a.viewFrames());
+    }
+
+    private void seekAt(float x) {
+        a.seekTo(frameAt(x));
+        invalidate();
+    }
+
+    /** The section whose label covers x, if any. */
+    private Jam.Marker markerAt(float x) {
+        double fpp = a.viewFrames() / (double) contentW();
+        double bar = a.s.barFrames(Engine.SR);
+        Jam.Marker hit = null;
+        for (Jam.Marker m : a.s.sortedMarkers()) {
+            float mx = (float) (m.bar * bar / fpp);
+            p.setTextSize(9 * Ui.density);
+            float wLabel = p.measureText(m.name) + 8 * Ui.density;
+            if (x >= mx - 4 * Ui.density && x <= mx + Math.max(wLabel, 24 * Ui.density)) hit = m;
+        }
+        return hit;
     }
 
     /** Same content width as a WaveView of equal size (which keeps room for its LED meter). */
@@ -44,7 +96,7 @@ final class Ruler extends View {
 
         // overview of all tracks (loudest track at each point)
         fill.setColor(0xFF3A342C);
-        float mid = H * 0.62f, amp = H * 0.3f;
+        float mid = H * 0.7f, amp = H * 0.24f;
         for (int x = 0; x < w; x++) {
             int i0 = (int) (x * fpp / Track.PB), i1 = Math.max(i0 + 1, (int) ((x + 1) * fpp / Track.PB));
             float m = 0;
@@ -55,8 +107,32 @@ final class Ruler extends View {
             if (m > 0) c.drawRect(x, mid - m * amp, x + 1, mid + m * amp, fill);
         }
 
+        float lh = labelH();
+        // section labels along the top
+        p.setTypeface(Ui.sansBold);
+        p.setTextSize(9 * u);
+        p.setTextAlign(Paint.Align.LEFT);
+        java.util.List<Jam.Marker> ms = s.sortedMarkers();
+        for (int i = 0; i < ms.size(); i++) {
+            Jam.Marker m = ms.get(i);
+            float x = (float) (m.bar * bar() / fpp);
+            float next = i + 1 < ms.size() ? (float) (ms.get(i + 1).bar * bar() / fpp) : w;
+            if (x > w) continue;
+            fill.setColor(0x55E9A23B);
+            c.drawRect(x, 0, Math.max(x + 2 * u, next - 1 * u), lh, fill);
+            fill.setColor(Ui.AMBER);
+            c.drawRect(x, 0, x + 1.5f * u, H, fill);
+            p.setColor(Ui.CREAM);
+            String label = m.name;
+            float room = next - x - 6 * u;
+            if (room > 12 * u) {
+                while (label.length() > 1 && p.measureText(label) > room) label = label.substring(0, label.length() - 1);
+                c.drawText(label, x + 4 * u, lh - 3 * u, p);
+            }
+        }
+
         // bar ticks and numbers
-        double bar = s.beatFrames(Engine.SR) * Math.max(1, s.beatsPerBar);
+        double bar = bar();
         int every = 1;
         while (bar * every / fpp < 28 * u) every *= 2;
         p.setTypeface(Ui.sansBold);
@@ -66,10 +142,11 @@ final class Ruler extends View {
             float x = (float) (b * bar / fpp);
             boolean label = b % every == 0;
             fill.setColor(label ? 0xFF5E5A51 : 0xFF2B2824);
-            c.drawRect(x, 0, x + 1, label ? 9 * u : 5 * u, fill);
+            c.drawRect(x, lh, x + 1, lh + (label ? 9 * u : 5 * u), fill);
             if (label) {
                 p.setColor(Ui.DIM);
-                c.drawText(String.valueOf(b + 1), x + 3 * u, 10 * u, p);
+                p.setTextSize(8.5f * u);
+                c.drawText(String.valueOf(b + 1), x + 3 * u, lh + 10 * u, p);
             }
         }
 
@@ -86,14 +163,10 @@ final class Ruler extends View {
         c.drawPath(tri, fill);
     }
 
+    private double bar() { return a.s.barFrames(Engine.SR); }
+
     @Override public boolean onTouchEvent(MotionEvent e) {
-        int act = e.getAction();
-        if (act == MotionEvent.ACTION_DOWN || act == MotionEvent.ACTION_MOVE || act == MotionEvent.ACTION_UP) {
-            if (getParent() != null) getParent().requestDisallowInterceptTouchEvent(true);
-            float x = Math.max(0, Math.min(contentW(), e.getX()));
-            a.seekTo((long) (x / contentW() * a.viewFrames()));
-            invalidate();
-        }
-        return true;
+        if (getParent() != null) getParent().requestDisallowInterceptTouchEvent(true);
+        return gd.onTouchEvent(e);
     }
 }

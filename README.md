@@ -18,6 +18,9 @@ every push to `main` builds the app and puts it in the **latest** release:
 
 open that link on your phone and allow installs from your browser when Android asks.
 
+once it's installed, long-press the app icon and choose *record now* to start a new jam and
+record straight away.
+
 to build it yourself, open the folder in Android Studio and use *Build > Build APK(s)*,
 or run `./gradlew assembleRelease`.
 
@@ -38,16 +41,17 @@ words in caps are the labels on the buttons in the app.
 | **KEY** | the jam's key. picking one shows its scale and chords, along with progressions in that key. long-press it to open the circle of fifths. |
 | **TUNE** | turns on the tuner without recording. |
 | **channel number** | arms that track, so the next take records over it. only the part you record over is replaced. if no track is armed, takes go to the first empty track or a new one. |
-| **timeline** | the strip above the tracks shows bar numbers and every track at once. tap or drag along it to move the playhead, while stopped or playing. |
+| **timeline** | the strip above the tracks shows bar numbers, sections and every track at once. tap or drag along it to move the playhead, while stopped or playing. long-press it to mark a section, and tap a section's name to loop it. |
 | **tap a lane** | opens the track view. |
 | **long-press a lane** | opens that track's menu. |
 | **M / S / FX** | mute, solo and effects. the effects are volume, pan, low cut, bass, treble, compression, echo synced to the tempo, and reverb. changing them never touches the recording. |
 | **LOOP** | loops the jam. long-press to set where the loop starts and ends. |
 | **CLICK** | metronome on or off. long-press for settings like count-in, click volume, input boost and latency. |
-| **UNDO** | removes the last take or import, or restores what it recorded over. |
+| **UNDO** | reverses the last take, import, edit, split, bounce or deleted track. |
+| **LYRICS** | opens the lyrics for this jam. |
 | **+ TRACK / IMPORT AUDIO** | adds an empty track or brings in an audio file. |
 | **JAMS / NEW** | opens your saved jams or starts a new one. long-press a jam in the list to delete it. jams save automatically, and empty ones are thrown away. |
-| **•••** | export, import, circle of fifths, settings, latency calibration, and renaming or deleting the jam. |
+| **•••** | export, import, sections, bouncing, lyrics, backups, circle of fifths, settings, latency calibration, and renaming or deleting the jam. |
 
 ## songwriting tools
 
@@ -62,6 +66,9 @@ you can look at each part on its own or choose *see all analysis*. it covers:
   track view
 - your range, and whether you're singing or playing sharp or flat on average
 - the chord in each bar
+- chords for the melody: for each bar, the chords in the key that share the most notes with
+  what you sang or played. if a track has no chords of its own, these also show in the
+  track view, marked as suggested
 - the scale and chords for the key, and some common progressions written out in it
 
 the detected notes can also be drawn on the lane, with out-of-key notes in red. melody
@@ -72,6 +79,23 @@ detection is for parts where you're playing chords.
 each bar, the detected notes on a piano roll with their names, and the waveform underneath.
 pinch to zoom and drag to scroll. tapping moves the playhead, and the track view has its own
 REW, PLAY and STOP keys. FIT zooms back out to the whole track.
+
+**editing.** open a track's *edit* menu from the track view or by long-pressing it. edits
+work from the playhead: trim everything before or after it, split the track there (the
+second half moves to a new track), move the track so it starts at the playhead, nudge it
+earlier or later by 10 ms or a beat, or fade in up to the playhead or out from it.
+UNDO reverses any of these.
+
+**sections.** long-press the timeline and pick a name like verse or chorus to mark where a
+section starts. a section runs until the next one. tap its name on the timeline to loop it,
+or find all of them under *••• > sections*.
+
+**lyrics.** LYRICS opens a page for writing the jam's lyrics. start a line with `[9]` to pin
+it to bar 9, or use PIN TO PLAYHEAD. while the jam plays, the pinned line for the current
+bar shows under the timeline.
+
+**bouncing.** *••• > bounce tracks* mixes the tracks you pick, with their effects, down to
+one new track. you can keep the originals (they get muted) or delete them.
 
 **circle of fifths.** long-press KEY, or open it from •••. tapping a key highlights it and
 the keys closest to it, and shows its relative key, scale, chords and progressions below
@@ -98,6 +122,13 @@ opens the share sheet.
 | FLAC | lossless, about half the size of WAV |
 | M4A | AAC at 256 kbps, using Android's built-in encoder |
 | MP3 | 192 kbps, using a bundled Java port of LAME |
+| MIDI | the notes from every analyzed track, plus a chord track (detected chords, or the suggested ones), with the jam's tempo, time signature and key |
+
+## backups
+
+*••• > back up or share this jam* packs every track, its settings, the lyrics and any
+analysis into one `.roughhouse.zip` file in `Download/Roughhouse`, and opens the share sheet.
+*••• > open a jam backup* brings one back as a new jam.
 
 ## lining up overdubs
 
@@ -128,6 +159,9 @@ app/src/main/java/com/roughhouse/app/
   Exporter.java      WAV, FLAC, M4A and MP3 export
   FlacWriter.java    FLAC encoder
   Mp3Writer.java     wrapper for the bundled LAME port
+  Editor.java        trimming, splitting, moving and fading
+  Midi.java          MIDI file export
+  Backup.java        packing a jam into a zip and unpacking it
   Jam.java, Track.java  data and saving
 app/src/main/java/mp3, mpg   LAME MP3 encoder, Java port (LGPL)
 app/src/main/res/font        TeX Gyre Heros and Termes, similar to Helvetica and Times
