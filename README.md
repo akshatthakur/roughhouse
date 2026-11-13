@@ -150,6 +150,19 @@ opens the share sheet.
 analysis into one `.roughhouse.zip` file in `Download/Roughhouse`, and opens the share sheet.
 *••• > open a jam backup* brings one back as a new jam.
 
+## recording in the background
+
+the tape keeps rolling if the screen turns off or you switch to another app. a notification
+shows that Roughhouse is recording or playing, with a STOP button. if a call comes in,
+another app starts playing, or headphones get unplugged, the tape stops and the take is
+kept. on Android 13 and up, Roughhouse asks once if it can show notifications. recording
+works either way.
+
+## landscape
+
+turn the phone sideways and the deck moves to the left, with the timeline, tracks and
+transport keys on the right. rotating doesn't interrupt recording or playback.
+
 ## lining up overdubs
 
 phones have a small delay between what you hear and what the mic records, which makes

@@ -154,6 +154,7 @@ public class MainActivity extends Activity implements Engine.Listener {
             note("couldn't open the microphone");
             return;
         }
+        tapeStarted();
         refreshAll();
         startTicking();
         note("recording a new jam. press REC or STOP when you're done.");
@@ -169,11 +170,102 @@ public class MainActivity extends Activity implements Engine.Listener {
     }
 
     @Override
+    public void onConfigurationChanged(android.content.res.Configuration c) {
+        super.onConfigurationChanged(c);
+        Ui.density = getResources().getDisplayMetrics().density;
+        boolean noteShown = noteBar != null && noteBar.getVisibility() == View.VISIBLE;
+        CharSequence noteText = noteShown ? noteBar.getText() : null;
+        setContentView(buildUi());
+        rebuildRows();
+        applyMode();
+        if (noteShown) note(noteText.toString());
+        h.removeCallbacks(tick);
+        ticking = false;
+        if (eng.isPlaying() || eng.monitoring) startTicking();
+    }
+
+    @Override
     protected void onPause() {
         super.onPause();
-        if (eng.isPlaying()) eng.stop();
+        // recording and playback keep going in the background (RecorderService keeps the app alive);
+        // only the tuner, which is just for looking at, stops
         if (eng.monitoring) { eng.stopMonitor(); refreshAll(); }
         save();
+    }
+
+    @Override
+    protected void onDestroy() {
+        if (eng.isPlaying()) eng.stop();
+        tapeEnded();
+        RecorderService.stopHook = null;
+        save();
+        super.onDestroy();
+    }
+
+    // ============================================================ tape running
+
+    private android.media.AudioManager audio;
+    private android.media.AudioFocusRequest focus;
+    private boolean noisyRegistered;
+    private final android.content.BroadcastReceiver noisy = new android.content.BroadcastReceiver() {
+        @Override public void onReceive(android.content.Context c, Intent i) {
+            if (android.media.AudioManager.ACTION_AUDIO_BECOMING_NOISY.equals(i.getAction())) {
+                interrupt("headphones unplugged");
+            }
+        }
+    };
+
+    /** Call whenever playback or recording starts (or a take ends but playback continues). */
+    private void tapeStarted() {
+        if (!eng.isPlaying()) return;
+        RecorderService.stopHook = () -> { if (eng.isPlaying()) eng.stop(); };
+        RecorderService.start(this, s.name, eng.isRecording());
+        if (audio == null) audio = getSystemService(android.media.AudioManager.class);
+        if (audio != null && focus == null) {
+            focus = new android.media.AudioFocusRequest.Builder(android.media.AudioManager.AUDIOFOCUS_GAIN)
+                    .setAudioAttributes(new android.media.AudioAttributes.Builder()
+                            .setUsage(android.media.AudioAttributes.USAGE_MEDIA)
+                            .setContentType(android.media.AudioAttributes.CONTENT_TYPE_MUSIC).build())
+                    .setOnAudioFocusChangeListener(change -> {
+                        if (change == android.media.AudioManager.AUDIOFOCUS_LOSS
+                                || change == android.media.AudioManager.AUDIOFOCUS_LOSS_TRANSIENT) {
+                            interrupt("another app (or a call) took over the audio");
+                        }
+                    }, h)
+                    .build();
+            audio.requestAudioFocus(focus);
+        }
+        if (!noisyRegistered) {
+            registerReceiver(noisy, new android.content.IntentFilter(android.media.AudioManager.ACTION_AUDIO_BECOMING_NOISY));
+            noisyRegistered = true;
+        }
+    }
+
+    /** Call when the tape stops. */
+    private void tapeEnded() {
+        RecorderService.stop(this);
+        if (audio != null && focus != null) audio.abandonAudioFocusRequest(focus);
+        focus = null;
+        if (noisyRegistered) {
+            try { unregisterReceiver(noisy); } catch (IllegalArgumentException ignored) {}
+            noisyRegistered = false;
+        }
+    }
+
+    /** A call, another app or unplugged headphones: stop cleanly and keep the take. */
+    private void interrupt(String why) {
+        if (!eng.isPlaying()) return;
+        boolean wasRecording = eng.isRecording();
+        eng.stop();
+        note("stopped: " + why + "." + (wasRecording ? " your take was saved." : ""));
+    }
+
+    private void askForNotifications() {
+        if (android.os.Build.VERSION.SDK_INT >= 33 && !prefs.getBoolean("askedNotif", false)
+                && checkSelfPermission("android.permission.POST_NOTIFICATIONS") != PackageManager.PERMISSION_GRANTED) {
+            prefs.edit().putBoolean("askedNotif", true).apply();
+            requestPermissions(new String[]{"android.permission.POST_NOTIFICATIONS"}, 3);
+        }
     }
 
     private boolean hasMic() {
@@ -193,8 +285,10 @@ public class MainActivity extends Activity implements Engine.Listener {
     private View buildUi() {
         FrameLayout frame = new FrameLayout(this);
         frame.setBackgroundColor(Ui.BODY);
+        boolean land = getResources().getConfiguration().orientation
+                == android.content.res.Configuration.ORIENTATION_LANDSCAPE;
         LinearLayout col = new LinearLayout(this);
-        col.setOrientation(LinearLayout.VERTICAL);
+        col.setOrientation(land ? LinearLayout.HORIZONTAL : LinearLayout.VERTICAL);
         frame.addView(col, new FrameLayout.LayoutParams(-1, -1));
 
         // --- brand strip
@@ -220,7 +314,6 @@ public class MainActivity extends Activity implements Engine.Listener {
         top.addView(nw, gap(0));
         top.addView(jams, gap(6));
         top.addView(more, gap(6));
-        col.addView(top);
 
         // --- deck panel: cassette, counter + meters, settings chips
         LinearLayout deck = new LinearLayout(this);
@@ -229,7 +322,7 @@ public class MainActivity extends Activity implements Engine.Listener {
         Ui.panel(deck);
         cassette = new Deck.Cassette(this);
         cassette.setOnClickListener(v -> renameJam());
-        deck.addView(cassette, new LinearLayout.LayoutParams(-1, dp(146)));
+        deck.addView(cassette, new LinearLayout.LayoutParams(-1, dp(land ? 124 : 146)));
 
         LinearLayout meters = new LinearLayout(this);
         meters.setGravity(Gravity.CENTER_VERTICAL);
@@ -274,7 +367,6 @@ public class MainActivity extends Activity implements Engine.Listener {
         LinearLayout.LayoutParams dlp = new LinearLayout.LayoutParams(-1, -2);
         dlp.leftMargin = dp(8);
         dlp.rightMargin = dp(8);
-        col.addView(deck, dlp);
 
         // --- timeline for the whole jam, lined up with the lanes below
         LinearLayout rulerRow = new LinearLayout(this);
@@ -291,7 +383,6 @@ public class MainActivity extends Activity implements Engine.Listener {
         LinearLayout.LayoutParams rsp = new LinearLayout.LayoutParams(dp(34), dp(1));
         rsp.leftMargin = dp(6);
         rulerRow.addView(new View(this), rsp);
-        col.addView(rulerRow);
         lyricStrip = Ui.text(this, 15, Ui.CREAM, Ui.serifItalic);
         lyricStrip.setGravity(Gravity.CENTER);
         lyricStrip.setSingleLine(true);
@@ -299,7 +390,6 @@ public class MainActivity extends Activity implements Engine.Listener {
         lyricStrip.setPadding(dp(14), dp(2), dp(14), dp(2));
         lyricStrip.setVisibility(View.GONE);
         lyricStrip.setOnClickListener(v -> showLyrics());
-        col.addView(lyricStrip);
 
         // --- channel strips
         ScrollView sv = new ScrollView(this);
@@ -308,7 +398,6 @@ public class MainActivity extends Activity implements Engine.Listener {
         trackList.setOrientation(LinearLayout.VERTICAL);
         trackList.setPadding(dp(8), dp(2), dp(8), dp(8));
         sv.addView(trackList, new FrameLayout.LayoutParams(-1, -2));
-        col.addView(sv, new LinearLayout.LayoutParams(-1, 0, 1));
 
         // --- transport
         LinearLayout tp = new LinearLayout(this);
@@ -332,7 +421,6 @@ public class MainActivity extends Activity implements Engine.Listener {
         keys.addView(recKey, keyLp(6));
         keys.addView(playKey, keyLp(6));
         keys.addView(stopKey, keyLp(6));
-        tp.addView(keys);
         LinearLayout small = new LinearLayout(this);
         small.setPadding(0, dp(8), 0, 0);
         loopChip = Ui.chip(this, "LOOP");
@@ -349,8 +437,37 @@ public class MainActivity extends Activity implements Engine.Listener {
         small.addView(clickChip, weighted(1, 6));
         small.addView(undoChip, weighted(1, 6));
         small.addView(lyr, weighted(1.2f, 6));
-        tp.addView(small);
-        col.addView(tp);
+
+        // --- assemble: one column in portrait; deck left and tape right in landscape
+        if (!land) {
+            col.addView(top);
+            col.addView(deck, dlp);
+            col.addView(rulerRow);
+            col.addView(lyricStrip);
+            col.addView(sv, new LinearLayout.LayoutParams(-1, 0, 1));
+            tp.addView(keys);
+            tp.addView(small);
+            col.addView(tp);
+        } else {
+            LinearLayout left = new LinearLayout(this);
+            left.setOrientation(LinearLayout.VERTICAL);
+            left.addView(top);
+            left.addView(deck, dlp);
+            small.setPadding(dp(8), dp(8), dp(8), dp(12));
+            left.addView(small);
+            ScrollView ls = new ScrollView(this);
+            ls.addView(left);
+            col.addView(ls, new LinearLayout.LayoutParams(0, -1, 0.92f));
+            LinearLayout right = new LinearLayout(this);
+            right.setOrientation(LinearLayout.VERTICAL);
+            right.addView(rulerRow);
+            right.addView(lyricStrip);
+            right.addView(sv, new LinearLayout.LayoutParams(-1, 0, 1));
+            tp.setPadding(dp(8), dp(6), dp(8), dp(8));
+            tp.addView(keys);
+            right.addView(tp);
+            col.addView(right, new LinearLayout.LayoutParams(0, -1, 1.08f));
+        }
 
         // --- message strip (replaces system toasts so everything stays in the deck fonts)
         noteBar = Ui.text(this, 13, Ui.INK, Ui.sans);
@@ -359,7 +476,7 @@ public class MainActivity extends Activity implements Engine.Listener {
         noteBar.setVisibility(View.GONE);
         noteBar.setOnClickListener(v -> noteBar.setVisibility(View.GONE));
         FrameLayout.LayoutParams nlp = new FrameLayout.LayoutParams(-1, -2, Gravity.BOTTOM);
-        nlp.setMargins(dp(12), 0, dp(12), dp(150));
+        nlp.setMargins(dp(12), 0, dp(12), dp(land ? 96 : 150));
         frame.addView(noteBar, nlp);
         return frame;
     }
@@ -377,7 +494,9 @@ public class MainActivity extends Activity implements Engine.Listener {
     }
 
     private LinearLayout.LayoutParams keyLp(int left) {
-        LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(0, dp(70), 1);
+        boolean land = getResources().getConfiguration().orientation
+                == android.content.res.Configuration.ORIENTATION_LANDSCAPE;
+        LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(0, dp(land ? 60 : 70), 1);
         lp.leftMargin = dp(left);
         return lp;
     }
@@ -635,6 +754,7 @@ public class MainActivity extends Activity implements Engine.Listener {
         if (s.lengthFrames() == 0 && !s.metronome) { note("nothing on tape yet. press REC to record."); return; }
         applyEngineSettings();
         eng.play(cursor, false);
+        tapeStarted();
         refreshAll();
         startTicking();
     }
@@ -645,7 +765,7 @@ public class MainActivity extends Activity implements Engine.Listener {
     }
 
     private void onRec() {
-        if (eng.isRecording()) { eng.stopRecording(); refreshAll(); return; } // punch out, keep rolling
+        if (eng.isRecording()) { eng.stopRecording(); tapeStarted(); refreshAll(); return; } // punch out, keep rolling
         if (!needMic()) return;
         Track t = nextRecTrack();
         if (t == null) t = addTrack();
@@ -659,6 +779,8 @@ public class MainActivity extends Activity implements Engine.Listener {
             return;
         }
         armed = t;
+        tapeStarted();
+        askForNotifications();
         refreshAll();
         startTicking();
         if (!prefs.getBoolean("calHint", false) && s.tracks.size() > 1) {
@@ -713,6 +835,7 @@ public class MainActivity extends Activity implements Engine.Listener {
     // ========================================================= engine callbacks
 
     @Override public void onEngineStopped() {
+        tapeEnded();
         if (trackView != null) trackView.invalidate();
         if (!eng.monitoring) getWindow().clearFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON);
         recKey.level = 0;
