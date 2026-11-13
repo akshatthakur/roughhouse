@@ -56,6 +56,7 @@ public class MainActivity extends Activity implements Engine.Listener {
     private TextView bpmChip, sigChip, keyChip, tuneChip, loopChip, clickChip, undoChip, noteBar;
     private Deck.Key rewKey, recKey, playKey, stopKey;
     private LinearLayout trackList;
+    private Ruler ruler;
     private final ArrayList<Row> rows = new ArrayList<>();
 
     private Track armed, lastTake;
@@ -194,6 +195,23 @@ public class MainActivity extends Activity implements Engine.Listener {
         dlp.leftMargin = dp(8);
         dlp.rightMargin = dp(8);
         col.addView(deck, dlp);
+
+        // --- timeline for the whole jam, lined up with the lanes below
+        LinearLayout rulerRow = new LinearLayout(this);
+        rulerRow.setPadding(dp(8 + 6), dp(8), dp(8 + 6), dp(2));
+        rulerRow.setGravity(Gravity.CENTER_VERTICAL);
+        TextView rl = Ui.silk(this, "BAR", 7.5f, Ui.FAINT);
+        rl.setGravity(Gravity.CENTER);
+        rulerRow.addView(rl, new LinearLayout.LayoutParams(dp(28), -2));
+        ruler = new Ruler(this);
+        ruler.setContentDescription("timeline: tap or drag to move the playhead");
+        LinearLayout.LayoutParams rlp = new LinearLayout.LayoutParams(0, dp(30), 1);
+        rlp.leftMargin = dp(6);
+        rulerRow.addView(ruler, rlp);
+        LinearLayout.LayoutParams rsp = new LinearLayout.LayoutParams(dp(34), dp(1));
+        rsp.leftMargin = dp(6);
+        rulerRow.addView(new View(this), rsp);
+        col.addView(rulerRow);
 
         // --- channel strips
         ScrollView sv = new ScrollView(this);
@@ -386,6 +404,7 @@ public class MainActivity extends Activity implements Engine.Listener {
         tuner.setVisibility(showTuner ? View.VISIBLE : View.GONE);
         vuPair.setVisibility(showTuner ? View.INVISIBLE : View.VISIBLE);
         updateDeck();
+        ruler.invalidate();
         if (trackRefresh != null) trackRefresh.run();
         if (trackView != null) trackView.invalidate();
     }
@@ -435,6 +454,7 @@ public class MainActivity extends Activity implements Engine.Listener {
             if (active) {
                 updateDeck();
                 for (Row r : rows) r.wave.invalidate();
+                ruler.invalidate();
                 if (trackView != null) trackView.invalidate();
                 recKey.level = eng.inputLevel;
                 recKey.invalidate();
@@ -489,6 +509,7 @@ public class MainActivity extends Activity implements Engine.Listener {
         if (eng.isPlaying() && !eng.isRecording()) eng.seek(frame);
         updateDeck();
         for (Row r : rows) r.wave.invalidate();
+        if (ruler != null) ruler.invalidate();
     }
 
     private Track addTrack() {
