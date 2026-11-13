@@ -1,0 +1,8 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <color name="deck_body">#1B1A18</color>
+    <color name="deck_panel">#262522</color>
+    <color name="deck_cream">#E8DFC8</color>
+    <color name="deck_dim">#9C9584</color>
+    <color name="deck_amber">#E9A23B</color>
+</resources>

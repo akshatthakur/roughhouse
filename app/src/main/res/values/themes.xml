@@ -1,0 +1,20 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- Helvetica / Times look-alikes everywhere: TeX Gyre Heros (sans) and Termes (serif). -->
+    <style name="Deck" parent="@android:style/Theme.DeviceDefault.NoActionBar">
+        <item name="android:fontFamily">@font/heros_regular</item>
+        <item name="android:windowBackground">@color/deck_body</item>
+        <item name="android:statusBarColor">@color/deck_body</item>
+        <item name="android:navigationBarColor">@color/deck_body</item>
+        <item name="android:colorAccent">@color/deck_amber</item>
+        <item name="android:alertDialogTheme">@style/DeckDialog</item>
+    </style>
+
+    <style name="DeckDialog" parent="@android:style/Theme.DeviceDefault.Dialog.Alert">
+        <item name="android:fontFamily">@font/heros_regular</item>
+        <item name="android:colorAccent">@color/deck_amber</item>
+        <item name="android:windowBackground">@drawable/dialog_bg</item>
+        <item name="android:textColorPrimary">@color/deck_cream</item>
+        <item name="android:textColorSecondary">@color/deck_dim</item>
+    </style>
+</resources>
