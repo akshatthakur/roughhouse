@@ -1124,9 +1124,91 @@ public class MainActivity extends Activity implements Engine.Listener {
                 "chords that fit the key", "see all analysis", "analyze again"};
         int[] map = {A_TEMPO, A_KEY, A_MELODY, A_CHORDS, A_SUGGEST, A_RANGE, A_FITS, A_ALL, -1};
         list("analysis", items, w -> {
-            if (map[w] < 0) analyzeTrack(t, A_ALL);
+            if (map[w] < 0) reanalyze(t);
             else showAnalysis(t, map[w]);
         });
+    }
+
+    /** Analyzing again replaces hand corrections, so ask first if there are any. */
+    private void reanalyze(Track t) {
+        if (t.analysis == null || !t.analysis.edited) { analyzeTrack(t, A_ALL); return; }
+        show(dlg(null).setMessage("analyzing again will replace the notes and chords you've corrected on " + t.name + ".")
+                .setPositiveButton("ANALYZE AGAIN", (d, w) -> analyzeTrack(t, A_ALL))
+                .setNegativeButton("CANCEL", null));
+    }
+
+    /** Called after any hand edit to a track's notes or chords. */
+    void analysisEdited(Track t) {
+        t.analysisDirty = true;
+        t.showNotes = !t.analysis.notes.isEmpty() || t.showNotes;
+        save();
+        refreshAll();
+        if (trackView != null) trackView.invalidate();
+    }
+
+    /** Pick the chord for one bar. Suggested chords become real ones the first time you change one. */
+    void editChord(Track t, int bar, boolean fromSuggested) {
+        Analyzer.Full f = t.analysis;
+        if (f == null) return;
+        int root = s.keyRoot >= 0 ? s.keyRoot : f.base.keyRoot;
+        boolean minor = s.keyRoot >= 0 ? s.keyMinor : f.base.minor;
+        String current = null;
+        for (Analyzer.Chord c : f.chords) if (c.bar == bar) current = c.name;
+        if (current == null && fromSuggested) {
+            for (Theory.Suggestion g : Theory.harmonize(f.notes, root, minor, s.beatFrames(SR), Math.max(1, s.beatsPerBar))) {
+                if (g.bar == bar) current = g.best;
+            }
+        }
+        ArrayList<String> names = new ArrayList<>();
+        if (root >= 0) {
+            for (String d : Theory.diatonic(root, minor)) {
+                String n = d.substring(d.lastIndexOf(' ') + 1);
+                if (!names.contains(n)) names.add(n);
+            }
+        }
+        int inKey = names.size();
+        ArrayList<CharSequence> items = new ArrayList<>();
+        for (String n : names) items.add(n.equals(current) ? n + "   ●" : n);
+        items.add("other chord…");
+        items.add("no chord");
+        String title = "bar " + (bar + 1) + (current != null ? " · now " + current : "");
+        list(title, items.toArray(new CharSequence[0]), w -> {
+            if (w < inKey) setChord(t, bar, names.get(w), fromSuggested);
+            else if (w == inKey) pickAnyChord(t, bar, fromSuggested);
+            else setChord(t, bar, null, fromSuggested);
+        });
+    }
+
+    private void pickAnyChord(Track t, int bar, boolean fromSuggested) {
+        CharSequence[] all = new CharSequence[36];
+        String[] qual = {"", "m", "dim"};
+        for (int i = 0; i < 12; i++) for (int q = 0; q < 3; q++) all[i * 3 + q] = Analyzer.NOTES[i] + qual[q];
+        list("bar " + (bar + 1), all, w -> setChord(t, bar, all[w].toString(), fromSuggested));
+    }
+
+    private void setChord(Track t, int bar, String name, boolean fromSuggested) {
+        Analyzer.Full f = t.analysis;
+        if (f.chords.isEmpty() && fromSuggested) {
+            // keep the other suggestions as they are by making them real chords first
+            int root = s.keyRoot >= 0 ? s.keyRoot : f.base.keyRoot;
+            boolean minor = s.keyRoot >= 0 ? s.keyMinor : f.base.minor;
+            for (Theory.Suggestion g : Theory.harmonize(f.notes, root, minor, s.beatFrames(SR), Math.max(1, s.beatsPerBar))) {
+                Analyzer.Chord c = new Analyzer.Chord();
+                c.bar = g.bar;
+                c.name = g.best;
+                f.chords.add(c);
+            }
+        }
+        f.chords.removeIf(c -> c.bar == bar);
+        if (name != null) {
+            Analyzer.Chord c = new Analyzer.Chord();
+            c.bar = bar;
+            c.name = name;
+            f.chords.add(c);
+        }
+        Analyzer.refreshAfterEdit(f);
+        analysisEdited(t);
+        note(name == null ? "removed the chord in bar " + (bar + 1) : "bar " + (bar + 1) + " is now " + name);
     }
 
     private void showMenu() {
@@ -1924,15 +2006,57 @@ public class MainActivity extends Activity implements Engine.Listener {
         actions.addView(fit, weighted(1, 6));
         col.addView(actions);
 
+        // shown while a note is selected
+        LinearLayout noteEdit = new LinearLayout(this);
+        noteEdit.setGravity(Gravity.CENTER_VERTICAL);
+        noteEdit.setPadding(dp(10), dp(6), dp(10), 0);
+        noteEdit.setVisibility(View.GONE);
+        TextView noteName = Ui.text(this, 14, Ui.CREAM, Ui.sansBold);
+        noteName.setPadding(0, 0, dp(6), 0);
+        noteEdit.addView(noteName, new LinearLayout.LayoutParams(0, -2, 1.3f));
+        TextView up = Ui.chip(this, "UP"), dn = Ui.chip(this, "DOWN"), sh = Ui.chip(this, "SHORTER"),
+                lo = Ui.chip(this, "LONGER"), del = Ui.chip(this, "DELETE");
+        for (TextView b : new TextView[]{up, dn, sh, lo, del}) {
+            b.setPadding(dp(6), dp(8), dp(6), dp(8));
+            noteEdit.addView(b, weighted(1, 4));
+        }
         TrackView tv = new TrackView(this, t);
         fit.setOnClickListener(v -> tv.fit());
+        tv.onSelect = n -> {
+            noteEdit.setVisibility(n == null ? View.GONE : View.VISIBLE);
+            if (n != null) {
+                double bf = s.beatFrames(SR);
+                long beat = (long) Math.floor(n.start / bf);
+                int bpb = Math.max(1, s.beatsPerBar);
+                noteName.setText(Pitch.noteName(n.midi) + "  ·  bar " + (beat / bpb + 1) + "." + (beat % bpb + 1));
+            }
+        };
+        Runnable edited = () -> {
+            Analyzer.refreshAfterEdit(t.analysis);
+            analysisEdited(t);
+            tv.select(tv.selected);
+        };
+        int half = (int) Math.round(s.beatFrames(SR) / 2);
+        up.setOnClickListener(v -> { if (tv.selected != null) { tv.selected.midi++; edited.run(); } });
+        dn.setOnClickListener(v -> { if (tv.selected != null) { tv.selected.midi--; edited.run(); } });
+        sh.setOnClickListener(v -> { if (tv.selected != null) { tv.selected.len = Math.max(half / 4, tv.selected.len - half); edited.run(); } });
+        lo.setOnClickListener(v -> { if (tv.selected != null) { tv.selected.len += half; edited.run(); } });
+        del.setOnClickListener(v -> {
+            if (tv.selected == null || t.analysis == null) return;
+            t.analysis.notes.remove(tv.selected);
+            tv.select(null);
+            Analyzer.refreshAfterEdit(t.analysis);
+            analysisEdited(t);
+        });
         LinearLayout.LayoutParams tlp = new LinearLayout.LayoutParams(-1, 0, 1);
         tlp.leftMargin = dp(8);
         tlp.rightMargin = dp(8);
         col.addView(tv, tlp);
 
+        col.addView(noteEdit);
+
         TextView hint = Ui.text(this, 11, Ui.FAINT, Ui.sans);
-        hint.setText("pinch to zoom and drag to scroll. tap to move the playhead.");
+        hint.setText("tap a note or chord to fix it. long-press the roll to add a note. pinch to zoom and drag to scroll.");
         hint.setGravity(Gravity.CENTER);
         hint.setPadding(0, dp(6), 0, dp(6));
         col.addView(hint);
