@@ -39,7 +39,7 @@ final class WaveView extends View {
             @Override public boolean onDown(MotionEvent e) { return true; }
 
             @Override public boolean onSingleTapUp(MotionEvent e) {
-                a.seekTo((long) (e.getX() / Math.max(1, getWidth()) * a.viewFrames()));
+                a.openTrack(t);
                 return true;
             }
 

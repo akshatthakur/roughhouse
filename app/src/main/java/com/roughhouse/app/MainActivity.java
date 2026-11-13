@@ -148,7 +148,7 @@ public class MainActivity extends Activity implements Engine.Listener {
         Ui.panel(deck);
         cassette = new Deck.Cassette(this);
         cassette.setOnClickListener(v -> renameJam());
-        deck.addView(cassette, new LinearLayout.LayoutParams(-1, dp(128)));
+        deck.addView(cassette, new LinearLayout.LayoutParams(-1, dp(146)));
 
         LinearLayout meters = new LinearLayout(this);
         meters.setGravity(Gravity.CENTER_VERTICAL);
@@ -218,10 +218,10 @@ public class MainActivity extends Activity implements Engine.Listener {
         playKey.setOnClickListener(v -> onPlay());
         stopKey = new Deck.Key(this, Deck.Key.STOP);
         stopKey.setOnClickListener(v -> onStopKey());
-        rewKey.setContentDescription("Rewind to start");
-        recKey.setContentDescription("Record");
-        playKey.setContentDescription("Play");
-        stopKey.setContentDescription("Stop");
+        rewKey.setContentDescription("rewind to start");
+        recKey.setContentDescription("record");
+        playKey.setContentDescription("play");
+        stopKey.setContentDescription("stop");
         keys.addView(rewKey, keyLp(0));
         keys.addView(recKey, keyLp(6));
         keys.addView(playKey, keyLp(6));
@@ -268,7 +268,7 @@ public class MainActivity extends Activity implements Engine.Listener {
     }
 
     private LinearLayout.LayoutParams keyLp(int left) {
-        LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(0, dp(64), 1);
+        LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(0, dp(70), 1);
         lp.leftMargin = dp(left);
         return lp;
     }
@@ -289,7 +289,7 @@ public class MainActivity extends Activity implements Engine.Listener {
             cap = Ui.text(MainActivity.this, 12, Ui.INK, Ui.sansBold);
             cap.setGravity(Gravity.CENTER);
             cap.setText(String.valueOf(index + 1));
-            cap.setContentDescription("Arm channel " + (index + 1) + " for recording");
+            cap.setContentDescription("arm channel " + (index + 1) + " for recording");
             cap.setOnClickListener(x -> { armed = t; refreshAll(); });
             v.addView(cap, new LinearLayout.LayoutParams(dp(28), dp(28)));
             wave = new WaveView(MainActivity.this, t);
@@ -352,7 +352,7 @@ public class MainActivity extends Activity implements Engine.Listener {
         }
         if (s.tracks.isEmpty()) {
             TextView e = Ui.text(this, 17, Ui.DIM, Ui.serifItalic);
-            e.setText("Press REC to lay down a jam.\nEvery take lands on a new track.");
+            e.setText("press REC to lay down a jam.\nevery take lands on a new track.");
             e.setGravity(Gravity.CENTER);
             e.setLineSpacing(0, 1.25f);
             e.setPadding(0, dp(40), 0, dp(16));
@@ -386,6 +386,8 @@ public class MainActivity extends Activity implements Engine.Listener {
         tuner.setVisibility(showTuner ? View.VISIBLE : View.GONE);
         vuPair.setVisibility(showTuner ? View.INVISIBLE : View.VISIBLE);
         updateDeck();
+        if (trackRefresh != null) trackRefresh.run();
+        if (trackView != null) trackView.invalidate();
     }
 
     private static String fmtBpm(float b) {
@@ -433,6 +435,7 @@ public class MainActivity extends Activity implements Engine.Listener {
             if (active) {
                 updateDeck();
                 for (Row r : rows) r.wave.invalidate();
+                if (trackView != null) trackView.invalidate();
                 recKey.level = eng.inputLevel;
                 recKey.invalidate();
                 if (tuner.getVisibility() == View.VISIBLE) tuner.set(eng.pitchHz);
@@ -489,7 +492,7 @@ public class MainActivity extends Activity implements Engine.Listener {
     }
 
     private Track addTrack() {
-        Track t = new Track(s.nextId(), "Track " + (s.tracks.size() + 1));
+        Track t = new Track(s.nextId(), "track " + (s.tracks.size() + 1));
         s.tracks.add(t);
         rebuildRows();
         return t;
@@ -505,7 +508,7 @@ public class MainActivity extends Activity implements Engine.Listener {
 
     private void onPlay() {
         if (eng.isPlaying()) return; // like the real key: already rolling
-        if (s.lengthFrames() == 0 && !s.metronome) { note("Nothing on tape yet. Press REC to record."); return; }
+        if (s.lengthFrames() == 0 && !s.metronome) { note("nothing on tape yet. press REC to record."); return; }
         applyEngineSettings();
         eng.play(cursor, false);
         refreshAll();
@@ -527,7 +530,7 @@ public class MainActivity extends Activity implements Engine.Listener {
         if (!wasPlaying) eng.play(cursor, s.countIn);
         long punch = wasPlaying ? Math.max(0, eng.position()) : cursor;
         if (!eng.startRecording(t, punch)) {
-            note("Couldn't open the microphone (or the phone is out of memory).");
+            note("couldn't open the microphone (or the phone is out of memory).");
             if (!wasPlaying) eng.stop();
             return;
         }
@@ -536,7 +539,7 @@ public class MainActivity extends Activity implements Engine.Listener {
         startTicking();
         if (!prefs.getBoolean("calHint", false) && s.tracks.size() > 1) {
             prefs.edit().putBoolean("calHint", true).apply();
-            note("Tip: run ••• → Calibrate latency once so overdubs line up.");
+            note("tip: run ••• → calibrate latency once so overdubs line up.");
         }
     }
 
@@ -558,7 +561,7 @@ public class MainActivity extends Activity implements Engine.Listener {
         save();
         rebuildRows();
         refreshAll();
-        note("Undone");
+        note("undone");
     }
 
     private void toggleTune() {
@@ -566,9 +569,9 @@ public class MainActivity extends Activity implements Engine.Listener {
             eng.stopMonitor();
         } else {
             if (!needMic()) return;
-            if (eng.isRecording()) { note("The tuner already shows while recording a VOX track."); return; }
+            if (eng.isRecording()) { note("the tuner already shows while recording a VOX track."); return; }
             applyEngineSettings();
-            if (!eng.startMonitor()) { note("Couldn't open the microphone"); return; }
+            if (!eng.startMonitor()) { note("couldn't open the microphone"); return; }
             startTicking();
         }
         refreshAll();
@@ -577,6 +580,7 @@ public class MainActivity extends Activity implements Engine.Listener {
     // ========================================================= engine callbacks
 
     @Override public void onEngineStopped() {
+        if (trackView != null) trackView.invalidate();
         if (!eng.monitoring) getWindow().clearFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON);
         recKey.level = 0;
         refreshAll();
@@ -594,10 +598,10 @@ public class MainActivity extends Activity implements Engine.Listener {
     @Override public void onCalibrated(int ms) {
         if (calDlg != null) { calDlg.dismiss(); calDlg = null; }
         if (ms < 0) {
-            note("Couldn't hear the clicks. Turn the volume up, unplug headphones and try again.");
+            note("couldn't hear the clicks. turn the volume up, unplug headphones and try again.");
         } else {
             prefs.edit().putInt("lat", ms).apply();
-            note("Latency set to " + ms + " ms");
+            note("latency set to " + ms + " ms");
         }
     }
 
@@ -733,25 +737,25 @@ public class MainActivity extends Activity implements Engine.Listener {
     }
 
     private static String pct(int p) {
-        return p == 0 ? "Off" : p + "%";
+        return p == 0 ? "off" : p + "%";
     }
 
     void showFx(Track t) {
         LinearLayout l = body();
-        slider(l, "Volume", 150, Math.round(t.vol * 100), p -> p + "%", p -> t.vol = p / 100f);
-        slider(l, "Pan", 100, Math.round(t.pan * 50 + 50),
-                p -> p == 50 ? "Center" : (p < 50 ? "L " + (50 - p) * 2 : "R " + (p - 50) * 2),
+        slider(l, "volume", 150, Math.round(t.vol * 100), p -> p + "%", p -> t.vol = p / 100f);
+        slider(l, "pan", 100, Math.round(t.pan * 50 + 50),
+                p -> p == 50 ? "center" : (p < 50 ? "L " + (50 - p) * 2 : "R " + (p - 50) * 2),
                 p -> t.pan = (p - 50) / 50f);
-        slider(l, "Low cut", 100, t.lowCut <= 0 ? 0 : (int) Math.round(Math.log(t.lowCut / 20.0) / Math.log(20) * 100),
-                p -> p == 0 ? "Off" : Math.round(20 * Math.pow(20, p / 100.0)) + " Hz",
+        slider(l, "low cut", 100, t.lowCut <= 0 ? 0 : (int) Math.round(Math.log(t.lowCut / 20.0) / Math.log(20) * 100),
+                p -> p == 0 ? "off" : Math.round(20 * Math.pow(20, p / 100.0)) + " Hz",
                 p -> t.lowCut = p == 0 ? 0 : (float) (20 * Math.pow(20, p / 100.0)));
-        slider(l, "Bass", 48, Math.round(t.bass * 2 + 24), p -> db((p - 24) / 2f), p -> t.bass = (p - 24) / 2f);
-        slider(l, "Treble", 48, Math.round(t.treble * 2 + 24), p -> db((p - 24) / 2f), p -> t.treble = (p - 24) / 2f);
-        slider(l, "Compression", 100, Math.round(t.comp * 100), MainActivity::pct, p -> t.comp = p / 100f);
-        slider(l, "Echo", 100, Math.round(t.echo / 0.8f * 100), MainActivity::pct, p -> t.echo = p / 100f * 0.8f);
-        slider(l, "Echo time (synced)", Dsp.DIV_NAMES.length - 1, t.echoDiv, p -> Dsp.DIV_NAMES[p], p -> t.echoDiv = p);
-        slider(l, "Echo repeats", 90, Math.round(t.echoFb * 100), p -> p + "%", p -> t.echoFb = p / 100f);
-        slider(l, "Reverb", 100, Math.round(t.rev * 100), MainActivity::pct, p -> t.rev = p / 100f);
+        slider(l, "bass", 48, Math.round(t.bass * 2 + 24), p -> db((p - 24) / 2f), p -> t.bass = (p - 24) / 2f);
+        slider(l, "treble", 48, Math.round(t.treble * 2 + 24), p -> db((p - 24) / 2f), p -> t.treble = (p - 24) / 2f);
+        slider(l, "compression", 100, Math.round(t.comp * 100), MainActivity::pct, p -> t.comp = p / 100f);
+        slider(l, "echo", 100, Math.round(t.echo / 0.8f * 100), MainActivity::pct, p -> t.echo = p / 100f * 0.8f);
+        slider(l, "echo time (synced)", Dsp.DIV_NAMES.length - 1, t.echoDiv, p -> Dsp.DIV_NAMES[p], p -> t.echoDiv = p);
+        slider(l, "echo repeats", 90, Math.round(t.echoFb * 100), p -> p + "%", p -> t.echoFb = p / 100f);
+        slider(l, "reverb", 100, Math.round(t.rev * 100), MainActivity::pct, p -> t.rev = p / 100f);
         show(dlg(t.name)
                 .setView(scroll(l))
                 .setPositiveButton("DONE", null)
@@ -761,7 +765,7 @@ public class MainActivity extends Activity implements Engine.Listener {
 
     private void showTempo() {
         LinearLayout l = body();
-        slider(l, "Tempo", 200, Math.round(s.bpm) - 40, p -> (p + 40) + " BPM", p -> { s.bpm = p + 40; refreshAll(); });
+        slider(l, "tempo", 200, Math.round(s.bpm) - 40, p -> (p + 40) + " BPM", p -> { s.bpm = p + 40; refreshAll(); });
         LinearLayout row = chipRow(l);
         TextView[] tapRef = new TextView[1];
         tapRef[0] = addChip(row, "TAP TEMPO", v -> {
@@ -778,9 +782,9 @@ public class MainActivity extends Activity implements Engine.Listener {
         });
         addChip(row, "×2", v -> { s.bpm = Math.min(240, s.bpm * 2); refreshAll(); note(fmtBpm(s.bpm) + " BPM"); });
         addChip(row, "÷2", v -> { s.bpm = Math.max(40, s.bpm / 2); refreshAll(); note(fmtBpm(s.bpm) + " BPM"); });
-        para(l, "The metronome clicks on every " + (s.beatUnit == 8 ? "eighth" : "quarter")
+        para(l, "the metronome clicks on every " + (s.beatUnit == 8 ? "eighth" : "quarter")
                 + " note at this tempo.", 12, Ui.DIM);
-        show(dlg("Tempo").setView(scroll(l)).setPositiveButton("DONE", null)
+        show(dlg("tempo").setView(scroll(l)).setPositiveButton("DONE", null)
                 .setOnDismissListener(d -> { refreshAll(); save(); }));
     }
 
@@ -792,24 +796,24 @@ public class MainActivity extends Activity implements Engine.Listener {
             String cur = (SIGS[i][0] == s.beatsPerBar && SIGS[i][1] == s.beatUnit) ? "   ●" : "";
             items[i] = SIGS[i][0] + "/" + SIGS[i][1] + cur;
         }
-        list("Time signature", items, w -> {
+        list("time signature", items, w -> {
             s.beatsPerBar = SIGS[w][0];
             s.beatUnit = SIGS[w][1];
             refreshAll();
             save();
-            note("Metronome accents every " + s.beatsPerBar + " beats; count-in is one bar.");
+            note("metronome accents every " + s.beatsPerBar + " beats; count-in is one bar.");
         });
     }
 
     private void showKeyPicker() {
         CharSequence[] items = new CharSequence[26];
-        items[0] = "Circle of fifths…";
-        items[1] = "No key";
+        items[0] = "circle of fifths…";
+        items[1] = "no key";
         for (int i = 0; i < 12; i++) {
             items[2 + i * 2] = Analyzer.NOTES[i] + " major";
             items[3 + i * 2] = Analyzer.NOTES[i] + " minor";
         }
-        list("Key", items, w -> {
+        list("key", items, w -> {
             if (w == 0) { showCircle(); return; }
             if (w == 1) s.keyRoot = -1;
             else { s.keyRoot = (w - 2) / 2; s.keyMinor = (w - 2) % 2 == 1; }
@@ -841,10 +845,10 @@ public class MainActivity extends Activity implements Engine.Listener {
             heading(info, Analyzer.keyName(r, m));
             int major = m ? (r + 3) % 12 : r;
             int relMinor = (major + 9) % 12;
-            para(info, "Next door on the circle:  IV " + Analyzer.NOTES[(major + 5) % 12] + "   ·   V "
-                    + Analyzer.NOTES[(major + 7) % 12] + "\nRelative " + (m ? "major: " + Analyzer.NOTES[major]
+            para(info, "next door on the circle:  IV " + Analyzer.NOTES[(major + 5) % 12] + "   ·   V "
+                    + Analyzer.NOTES[(major + 7) % 12] + "\nrelative " + (m ? "major: " + Analyzer.NOTES[major]
                     : "minor: " + Analyzer.NOTES[relMinor] + "m")
-                    + "\nKeys next to each other share six of seven notes, so moving one step is the smoothest key change.",
+                    + "\nkeys next to each other share six of seven notes, so moving one step is the smoothest key change.",
                     13, Ui.DIM);
             LinearLayout row = chipRow(info);
             addChip(row, "USE FOR JAM", v -> {
@@ -852,13 +856,13 @@ public class MainActivity extends Activity implements Engine.Listener {
                 s.keyMinor = m;
                 refreshAll();
                 save();
-                note("Jam key set to " + s.keyLabel());
+                note("jam key set to " + s.keyLabel());
             });
             fitsKey(info, r, m);
         };
         circle.onPick = (r, m) -> { sel[0] = r; sel[1] = m ? 1 : 0; fill.run(); };
         fill.run();
-        show(dlg("Circle of fifths").setView(scroll(l)).setPositiveButton("DONE", null));
+        show(dlg("circle of fifths").setView(scroll(l)).setPositiveButton("DONE", null));
     }
 
     /** Scale, diatonic chords and progressions for a key. */
@@ -870,31 +874,31 @@ public class MainActivity extends Activity implements Engine.Listener {
     }
 
     private void fitsKey(LinearLayout l, int root, boolean minor) {
-        heading(l, "Scale");
+        heading(l, "scale");
         para(l, Theory.scaleNames(root, minor), 15, Ui.AMBER);
-        heading(l, "Chords in the key");
+        heading(l, "chords in the key");
         para(l, TextUtils.join("\n", Theory.diatonic(root, minor)), 14, Ui.CREAM);
-        heading(l, "Progressions to try");
+        heading(l, "progressions to try");
         para(l, TextUtils.join("\n", Theory.progressions(root, minor)), 14, Ui.CREAM);
     }
 
     private void showSettings() {
         LinearLayout l = body();
         Switch ci = new Switch(this);
-        ci.setText("One-bar count-in before recording");
+        ci.setText("one-bar count-in before recording");
         ci.setTypeface(Ui.sans);
         ci.setTextColor(Ui.CREAM);
         ci.setChecked(s.countIn);
         ci.setOnCheckedChangeListener((b, c) -> s.countIn = c);
         ci.setPadding(0, dp(12), 0, dp(4));
         l.addView(ci);
-        slider(l, "Click volume", 100, Math.round(s.metroVol * 100), p -> p + "%", p -> s.metroVol = p / 100f);
-        slider(l, "Input boost", 24, prefs.getInt("boost", 0), p -> "+" + p + " dB",
+        slider(l, "click volume", 100, Math.round(s.metroVol * 100), p -> p + "%", p -> s.metroVol = p / 100f);
+        slider(l, "input boost", 24, prefs.getInt("boost", 0), p -> "+" + p + " dB",
                 p -> prefs.edit().putInt("boost", p).apply());
-        slider(l, "Latency compensation", 400, prefs.getInt("lat", 120), p -> p + " ms",
+        slider(l, "latency compensation", 400, prefs.getInt("lat", 120), p -> p + " ms",
                 p -> prefs.edit().putInt("lat", p).apply());
-        para(l, "Shifts new takes earlier so they line up with what you heard. Calibrate measures it for you.", 12, Ui.DIM);
-        show(dlg("Settings")
+        para(l, "shifts new takes earlier so they line up with what you heard. calibrate measures it for you.", 12, Ui.DIM);
+        show(dlg("settings")
                 .setView(scroll(l))
                 .setPositiveButton("DONE", null)
                 .setNeutralButton("CALIBRATE", (d, w) -> calibrate())
@@ -903,14 +907,14 @@ public class MainActivity extends Activity implements Engine.Listener {
 
     private void calibrate() {
         if (!needMic()) return;
-        show(dlg("Calibrate latency")
-                .setMessage("Unplug headphones, turn media volume up and stay quiet. "
+        show(dlg("calibrate latency")
+                .setMessage("unplug headphones, turn media volume up and stay quiet. "
                         + "Roughhouse will play a few clicks and listen for them (about 3 seconds).")
                 .setPositiveButton("START", (d, w) -> {
                     if (eng.monitoring) eng.stopMonitor();
                     applyEngineSettings();
-                    if (!eng.calibrate()) { note("Couldn't open the microphone"); return; }
-                    calDlg = show(dlg(null).setMessage("Listening…").setCancelable(false));
+                    if (!eng.calibrate()) { note("couldn't open the microphone"); return; }
+                    calDlg = show(dlg(null).setMessage("listening…").setCancelable(false));
                     refreshAll();
                     startTicking();
                     h.postDelayed(() -> eng.stop(), 3400);
@@ -919,13 +923,13 @@ public class MainActivity extends Activity implements Engine.Listener {
     }
 
     private void showLoopMenu() {
-        list("Loop region", new CharSequence[]{"Loop starts here", "Loop ends here", "Loop the whole jam"}, w -> {
+        list("loop region", new CharSequence[]{"loop starts here", "loop ends here", "loop the whole jam"}, w -> {
             long p = Math.max(0, playhead());
             if (w == 0) {
                 s.loopIn = p;
                 if (s.loopOut > 0 && s.loopOut <= p) s.loopOut = -1;
             } else if (w == 1) {
-                if (p > s.loopIn) s.loopOut = p; else note("Loop end must be after the start");
+                if (p > s.loopIn) s.loopOut = p; else note("loop end must be after the start");
             } else {
                 s.loopIn = 0;
                 s.loopOut = -1;
@@ -939,19 +943,22 @@ public class MainActivity extends Activity implements Engine.Listener {
         if (eng.isRecording()) return;
         ArrayList<CharSequence> items = new ArrayList<>();
         ArrayList<Runnable> acts = new ArrayList<>();
-        if (!t.isEmpty()) {
-            items.add("Analyze notes, key, tempo and chords");
-            acts.add(() -> analyzeTrack(t));
-        }
+        items.add("open track view");
+        acts.add(() -> openTrack(t));
         if (t.analysis != null) {
-            items.add(t.showNotes ? "Hide notes on the lane" : "Show notes on the lane");
-            acts.add(() -> { t.showNotes = !t.showNotes; refreshAll(); });
+            items.add("analysis…");
+            acts.add(() -> showAnalysisMenu(t));
+            items.add(t.showNotes ? "hide notes on the lane" : "show notes on the lane");
+            acts.add(() -> { t.showNotes = !t.showNotes; save(); refreshAll(); });
+        } else if (!t.isEmpty()) {
+            items.add("analyze notes, key, tempo and chords");
+            acts.add(() -> analyzeTrack(t, A_ALL));
         }
-        items.add(t.vocal ? "Pitch monitor: on (vocal track)" : "Pitch monitor: off");
-        acts.add(() -> { t.vocal = !t.vocal; save(); refreshAll(); note(t.vocal ? "The tuner will show while recording this track." : "Pitch monitor off for this track."); });
-        items.add("Rename");
-        acts.add(() -> prompt("Rename track", t.name, v -> { t.name = v; save(); refreshAll(); }));
-        items.add("Duplicate");
+        items.add(t.vocal ? "pitch monitor: on (vocal track)" : "pitch monitor: off");
+        acts.add(() -> { t.vocal = !t.vocal; save(); refreshAll(); note(t.vocal ? "the tuner will show while recording this track." : "pitch monitor off for this track."); });
+        items.add("rename");
+        acts.add(() -> prompt("rename track", t.name, v -> { t.name = v; save(); refreshAll(); }));
+        items.add("duplicate");
         acts.add(() -> {
             Track c = new Track(s.nextId(), t.name + " copy");
             c.copySettingsFrom(t);
@@ -959,9 +966,12 @@ public class MainActivity extends Activity implements Engine.Listener {
             try {
                 c.data = Arrays.copyOf(t.data, t.data.length);
             } catch (OutOfMemoryError e) {
-                note("Not enough memory to duplicate this track.");
+                note("not enough memory to duplicate this track.");
                 return;
             }
+            c.analysis = t.analysis;
+            c.analysisDirty = t.analysis != null;
+            c.showNotes = t.showNotes;
             c.dirty = true;
             c.computePeaks();
             s.tracks.add(s.tracks.indexOf(t) + 1, c);
@@ -969,7 +979,7 @@ public class MainActivity extends Activity implements Engine.Listener {
             rebuildRows();
             refreshAll();
         });
-        items.add("Clear audio");
+        items.add("clear audio");
         acts.add(() -> {
             if (eng.isPlaying()) eng.stop();
             t.undo = t.data;
@@ -981,8 +991,8 @@ public class MainActivity extends Activity implements Engine.Listener {
             save();
             refreshAll();
         });
-        items.add("Delete track");
-        acts.add(() -> show(dlg(null).setMessage("Delete " + t.name + "?")
+        items.add("delete track");
+        acts.add(() -> show(dlg(null).setMessage("delete " + t.name + "?")
                 .setPositiveButton("DELETE", (d2, w2) -> {
                     s.tracks.remove(t);
                     if (lastTake == t) lastTake = null;
@@ -995,9 +1005,22 @@ public class MainActivity extends Activity implements Engine.Listener {
         list(t.name, items.toArray(new CharSequence[0]), w -> acts.get(w).run());
     }
 
+    // analysis sections (bit flags so any mix can be shown together)
+    static final int A_TEMPO = 1, A_KEY = 2, A_MELODY = 4, A_CHORDS = 8, A_RANGE = 16, A_FITS = 32, A_ALL = 63;
+
+    private void showAnalysisMenu(Track t) {
+        CharSequence[] items = {"tempo", "key", "melody", "chords by bar", "range and tuning",
+                "chords that fit the key", "see all analysis", "analyze again"};
+        int[] map = {A_TEMPO, A_KEY, A_MELODY, A_CHORDS, A_RANGE, A_FITS, A_ALL, -1};
+        list("analysis", items, w -> {
+            if (map[w] < 0) analyzeTrack(t, A_ALL);
+            else showAnalysis(t, map[w]);
+        });
+    }
+
     private void showMenu() {
-        list(null, new CharSequence[]{"Export jam…", "Import audio…", "Circle of fifths", "Settings",
-                "Calibrate latency", "Rename jam", "Delete jam"}, w -> {
+        list(null, new CharSequence[]{"export jam…", "import audio…", "circle of fifths", "settings",
+                "calibrate latency", "rename jam", "delete jam"}, w -> {
             switch (w) {
                 case 0: exportJam(); break;
                 case 1: pickImport(); break;
@@ -1034,7 +1057,7 @@ public class MainActivity extends Activity implements Engine.Listener {
     }
 
     private void renameJam() {
-        prompt("Rename jam", s.name, v -> { s.name = v; save(); refreshAll(); });
+        prompt("rename jam", s.name, v -> { s.name = v; save(); refreshAll(); });
     }
 
     // ================================================================= analysis
@@ -1043,9 +1066,9 @@ public class MainActivity extends Activity implements Engine.Listener {
         return show(dlg(null).setMessage(msg).setCancelable(false));
     }
 
-    private void analyzeTrack(Track t) {
+    private void analyzeTrack(Track t, int which) {
         if (eng.isPlaying()) eng.stop();
-        AlertDialog wait = busy("Listening to " + t.name + "…");
+        AlertDialog wait = busy("listening to " + t.name + "…");
         final short[] data = t.data;
         final double bf = s.beatFrames(SR);
         final int bpb = Math.max(1, s.beatsPerBar);
@@ -1059,79 +1082,101 @@ public class MainActivity extends Activity implements Engine.Listener {
             final Analyzer.Full res = f;
             h.post(() -> {
                 wait.dismiss();
-                if (res == null) { note("Not enough memory to analyze this track."); return; }
+                if (res == null) { note("not enough memory to analyze this track."); return; }
                 t.analysis = res;
+                t.analysisDirty = true;
                 t.showNotes = !res.notes.isEmpty();
+                save();
                 refreshAll();
-                showAnalysis(t);
+                if (trackView != null && trackView.t == t) trackView.invalidate();
+                showAnalysis(t, which);
             });
         }, "rh-analyze").start();
     }
 
-    private void showAnalysis(Track t) {
+    private void showAnalysis(Track t, int which) {
         Analyzer.Full f = t.analysis;
         if (f == null) return;
         LinearLayout l = body();
-
-        heading(l, "Tempo");
-        if (f.base.bpm > 0) {
-            para(l, "About " + fmtBpm(f.base.bpm) + " BPM" + (f.base.bpmConfidence < 0.3f ? " (low confidence)" : "")
-                    + ".  This jam is at " + fmtBpm(s.bpm) + " BPM.", 14, Ui.CREAM);
-            tempoChoices(l, f.base.bpm);
-        } else {
-            para(l, "No steady pulse found (needs at least a few seconds of rhythmic material).", 14, Ui.DIM);
-        }
-
-        heading(l, "Key");
-        if (f.base.keyRoot >= 0) {
-            para(l, Analyzer.keyName(f.base.keyRoot, f.base.minor)
-                    + (f.base.keyConfidence < 0.25f ? "  (could also be its relative "
-                    + (f.base.minor ? "major" : "minor") + ")" : ""), 14, Ui.CREAM);
-            LinearLayout row = chipRow(l);
-            addChip(row, "USE FOR JAM", v -> {
-                s.keyRoot = f.base.keyRoot;
-                s.keyMinor = f.base.minor;
-                refreshAll();
-                save();
-                note("Jam key set to " + s.keyLabel());
-            });
-        } else {
-            para(l, "Not enough pitched material to tell.", 14, Ui.DIM);
-        }
-
         int root = s.keyRoot >= 0 ? s.keyRoot : f.base.keyRoot;
         boolean minor = s.keyRoot >= 0 ? s.keyMinor : f.base.minor;
+        boolean all = which == A_ALL;
+        String title = t.name;
 
-        heading(l, "Melody");
-        if (f.notes.isEmpty()) {
-            para(l, "No single-note melody found. This works best on one voice or instrument at a time.", 14, Ui.DIM);
-        } else {
-            para(l, "Range " + Pitch.noteName(f.low) + " – " + Pitch.noteName(f.high)
-                    + "  (" + rangeText(f.high - f.low) + ")", 14, Ui.CREAM);
-            if (Math.abs(f.avgCents) >= 6) {
-                para(l, String.format(Locale.US, "Averages %d cents %s.", Math.round(Math.abs(f.avgCents)),
-                        f.avgCents > 0 ? "sharp" : "flat"), 13, Ui.AMBER);
+        if ((which & A_TEMPO) != 0) {
+            if (all) heading(l, "tempo"); else title = "tempo · " + t.name;
+            if (f.base.bpm > 0) {
+                para(l, "about " + fmtBpm(f.base.bpm) + " BPM" + (f.base.bpmConfidence < 0.3f ? " (low confidence)" : "")
+                        + ". this jam is at " + fmtBpm(s.bpm) + " BPM.", 14, Ui.CREAM);
+                tempoChoices(l, f.base.bpm);
+            } else {
+                para(l, "no steady pulse found. it needs a few seconds of rhythmic playing.", 14, Ui.DIM);
             }
-            para(l, melodyText(f, root, minor), 14, Ui.CREAM);
-            if (root >= 0) para(l, "* outside " + Analyzer.keyName(root, minor), 12, Ui.DIM);
-            LinearLayout row = chipRow(l);
-            addChip(row, t.showNotes ? "HIDE NOTES ON LANE" : "SHOW NOTES ON LANE", v -> {
-                t.showNotes = !t.showNotes;
-                ((TextView) v).setText(t.showNotes ? "HIDE NOTES ON LANE" : "SHOW NOTES ON LANE");
-                refreshAll();
-            });
         }
-
-        heading(l, "Chords by bar");
-        if (f.chords.isEmpty()) para(l, "No clear chords (normal for a single melody line).", 14, Ui.DIM);
-        else para(l, chordText(f), 14, Ui.CREAM);
-
-        if (root >= 0) {
-            heading(l, "Writing in " + Analyzer.keyName(root, minor));
-            fitsKey(l, root, minor);
+        if ((which & A_KEY) != 0) {
+            if (all) heading(l, "key"); else title = "key · " + t.name;
+            if (f.base.keyRoot >= 0) {
+                para(l, Analyzer.keyName(f.base.keyRoot, f.base.minor)
+                        + (f.base.keyConfidence < 0.25f ? " (it could also be the relative "
+                        + (f.base.minor ? "major" : "minor") + ")" : ""), 14, Ui.CREAM);
+                LinearLayout row = chipRow(l);
+                addChip(row, "USE FOR JAM", v -> {
+                    s.keyRoot = f.base.keyRoot;
+                    s.keyMinor = f.base.minor;
+                    refreshAll();
+                    save();
+                    note("jam key set to " + s.keyLabel());
+                });
+            } else {
+                para(l, "not enough pitched material to tell.", 14, Ui.DIM);
+            }
         }
-        para(l, "Bars and beats follow the jam's tempo and time signature.", 12, Ui.DIM);
-        show(dlg(t.name).setView(scroll(l)).setPositiveButton("DONE", null));
+        if ((which & A_RANGE) != 0) {
+            if (all) heading(l, "range and tuning"); else title = "range · " + t.name;
+            if (f.notes.isEmpty()) {
+                para(l, "no single-note melody found, so there's no range to show.", 14, Ui.DIM);
+            } else {
+                para(l, Pitch.noteName(f.low) + " to " + Pitch.noteName(f.high) + " (" + rangeText(f.high - f.low) + ")", 14, Ui.CREAM);
+                para(l, Math.abs(f.avgCents) < 6 ? "in tune on average."
+                        : String.format(Locale.US, "%d cents %s on average.", Math.round(Math.abs(f.avgCents)),
+                        f.avgCents > 0 ? "sharp" : "flat"), 13, Math.abs(f.avgCents) < 6 ? Ui.DIM : Ui.AMBER);
+            }
+        }
+        if ((which & A_MELODY) != 0) {
+            if (all) heading(l, "melody"); else title = "melody · " + t.name;
+            if (f.notes.isEmpty()) {
+                para(l, "no single-note melody found. this works best on one voice or instrument at a time.", 14, Ui.DIM);
+            } else {
+                para(l, melodyText(f, root, minor), 14, Ui.CREAM);
+                if (root >= 0) para(l, "* outside " + Analyzer.keyName(root, minor), 12, Ui.DIM);
+                LinearLayout row = chipRow(l);
+                addChip(row, t.showNotes ? "HIDE NOTES ON LANE" : "SHOW NOTES ON LANE", v -> {
+                    t.showNotes = !t.showNotes;
+                    ((TextView) v).setText(t.showNotes ? "HIDE NOTES ON LANE" : "SHOW NOTES ON LANE");
+                    save();
+                    refreshAll();
+                });
+            }
+        }
+        if ((which & A_CHORDS) != 0) {
+            if (all) heading(l, "chords by bar"); else title = "chords · " + t.name;
+            if (f.chords.isEmpty()) para(l, "no clear chords. that's normal for a single melody line.", 14, Ui.DIM);
+            else para(l, chordText(f), 14, Ui.CREAM);
+        }
+        if ((which & A_FITS) != 0) {
+            if (root >= 0) {
+                if (all) heading(l, "writing in " + Analyzer.keyName(root, minor));
+                else title = Analyzer.keyName(root, minor);
+                fitsKey(l, root, minor);
+            } else {
+                para(l, "no key yet. set one with the KEY button or analyze a track with more pitched material.", 14, Ui.DIM);
+            }
+        }
+        if ((which & (A_MELODY | A_CHORDS)) != 0) {
+            para(l, "bars and beats follow the jam's tempo and time signature.", 12, Ui.DIM);
+        }
+        show(dlg(all ? t.name : title).setView(scroll(l)).setPositiveButton("DONE", null)
+                .setNeutralButton("TRACK VIEW", (d, w) -> openTrack(t)));
     }
 
     private void tempoChoices(LinearLayout l, float bpm) {
@@ -1143,7 +1188,7 @@ public class MainActivity extends Activity implements Engine.Listener {
                 s.bpm = use;
                 refreshAll();
                 save();
-                note("Tempo set to " + fmtBpm(use) + " BPM");
+                note("tempo set to " + fmtBpm(use) + " BPM");
             });
         }
     }
@@ -1166,7 +1211,7 @@ public class MainActivity extends Activity implements Engine.Listener {
             long bar = beat / bpb;
             if (bar != lastBar) {
                 if (b.length() > 0) b.append('\n');
-                b.append("Bar ").append(bar + 1).append(":  ");
+                b.append("bar ").append(bar + 1).append(":  ");
                 lastBar = bar;
             } else {
                 b.append("  ");
@@ -1187,11 +1232,121 @@ public class MainActivity extends Activity implements Engine.Listener {
                     && f.chords.get(j + 1).bar == f.chords.get(j).bar + 1) j++;
             int a = c.bar + 1, z = f.chords.get(j).bar + 1;
             if (b.length() > 0) b.append(i % 4 == 0 ? "\n" : "    ");
-            b.append(a == z ? "Bar " + a : "Bars " + a + "–" + z).append(":  ").append(c.name);
+            b.append(a == z ? "bar " + a : "bars " + a + "–" + z).append(":  ").append(c.name);
             i = j + 1;
         }
         return b.toString();
     }
+
+    // =============================================================== track view
+
+    private TrackView trackView;
+    private android.app.Dialog trackDlg;
+
+    /** Full-screen view of one track: notes, chords, bars and waveform, with zoom and transport. */
+    void openTrack(Track t) {
+        if (eng.isRecording()) return;
+        android.app.Dialog d = new android.app.Dialog(this, R.style.DeckFull);
+        LinearLayout col = new LinearLayout(this);
+        col.setOrientation(LinearLayout.VERTICAL);
+        col.setBackgroundColor(Ui.BODY);
+
+        LinearLayout top = new LinearLayout(this);
+        top.setGravity(Gravity.CENTER_VERTICAL);
+        top.setPadding(dp(10), dp(10), dp(10), dp(4));
+        TextView back = Ui.chip(this, "BACK");
+        back.setOnClickListener(v -> d.dismiss());
+        top.addView(back);
+        TextView name = Ui.text(this, 20, Ui.CREAM, Ui.serifItalic);
+        name.setText(t.name);
+        name.setSingleLine(true);
+        name.setEllipsize(TextUtils.TruncateAt.END);
+        name.setPadding(dp(12), 0, dp(8), 0);
+        top.addView(name, new LinearLayout.LayoutParams(0, -2, 1));
+        TextView m = Ui.chip(this, "M"), so = Ui.chip(this, "S"), fx = Ui.chip(this, "FX");
+        Runnable chips = () -> {
+            Ui.setChip(m, t.mute, Ui.BLUE);
+            Ui.setChip(so, t.solo, Ui.YELLOW);
+            Ui.setChip(fx, t.fxActive(), Ui.AMBER);
+        };
+        m.setOnClickListener(v -> { t.mute = !t.mute; chips.run(); refreshAll(); });
+        so.setOnClickListener(v -> { t.solo = !t.solo; chips.run(); refreshAll(); });
+        fx.setOnClickListener(v -> showFx(t));
+        chips.run();
+        top.addView(m, gap(0));
+        top.addView(so, gap(6));
+        top.addView(fx, gap(6));
+        col.addView(top);
+
+        TextView info = Ui.text(this, 12, Ui.DIM, Ui.sans);
+        info.setPadding(dp(14), dp(2), dp(14), dp(6));
+        col.addView(info);
+
+        LinearLayout actions = new LinearLayout(this);
+        actions.setPadding(dp(10), 0, dp(10), dp(8));
+        TextView an = Ui.chip(this, t.analysis != null ? "ANALYSIS" : "ANALYZE");
+        an.setOnClickListener(v -> {
+            if (t.analysis != null) showAnalysisMenu(t);
+            else if (!t.isEmpty()) analyzeTrack(t, A_ALL);
+        });
+        TextView fit = Ui.chip(this, "FIT");
+        actions.addView(an, new LinearLayout.LayoutParams(0, -2, 1));
+        actions.addView(fit, weighted(1, 6));
+        col.addView(actions);
+
+        TrackView tv = new TrackView(this, t);
+        fit.setOnClickListener(v -> tv.fit());
+        LinearLayout.LayoutParams tlp = new LinearLayout.LayoutParams(-1, 0, 1);
+        tlp.leftMargin = dp(8);
+        tlp.rightMargin = dp(8);
+        col.addView(tv, tlp);
+
+        TextView hint = Ui.text(this, 11, Ui.FAINT, Ui.sans);
+        hint.setText("pinch to zoom and drag to scroll. tap to move the playhead.");
+        hint.setGravity(Gravity.CENTER);
+        hint.setPadding(0, dp(6), 0, dp(6));
+        col.addView(hint);
+
+        LinearLayout keys = new LinearLayout(this);
+        keys.setPadding(dp(8), dp(4), dp(8), dp(12));
+        keys.setBackgroundColor(Ui.PANEL);
+        Deck.Key rw = new Deck.Key(this, Deck.Key.REW), pl = new Deck.Key(this, Deck.Key.PLAY), st = new Deck.Key(this, Deck.Key.STOP);
+        rw.setOnClickListener(v -> { seekTo(0); tv.invalidate(); });
+        pl.setOnClickListener(v -> { onPlay(); pl.set(eng.isPlaying(), eng.isPlaying()); });
+        st.setOnClickListener(v -> { onStopKey(); pl.set(false, false); tv.invalidate(); });
+        keys.addView(rw, keyLp(0));
+        keys.addView(pl, keyLp(6));
+        keys.addView(st, keyLp(6));
+        col.addView(keys);
+
+        Runnable refreshInfo = () -> {
+            Analyzer.Full f = t.analysis;
+            an.setText(f != null ? "ANALYSIS" : "ANALYZE");
+            if (f == null) {
+                info.setText(t.isEmpty() ? "this track is empty." : "not analyzed yet. tap ANALYZE to find its notes and chords.");
+                return;
+            }
+            StringBuilder b = new StringBuilder();
+            if (f.base.keyRoot >= 0) b.append(Analyzer.keyName(f.base.keyRoot, f.base.minor));
+            if (f.base.bpm > 0) b.append(b.length() > 0 ? "  ·  " : "").append("about ").append(fmtBpm(f.base.bpm)).append(" BPM");
+            if (f.low > 0) b.append(b.length() > 0 ? "  ·  " : "").append("range ").append(Pitch.noteName(f.low)).append(" to ").append(Pitch.noteName(f.high));
+            b.append(b.length() > 0 ? "  ·  " : "").append(f.notes.size()).append(" notes");
+            info.setText(b.toString());
+        };
+        refreshInfo.run();
+        trackRefresh = () -> { refreshInfo.run(); chips.run(); pl.set(eng.isPlaying(), eng.isPlaying()); };
+
+        d.setContentView(col);
+        d.setOnDismissListener(x -> { trackView = null; trackDlg = null; trackRefresh = null; refreshAll(); });
+        if (d.getWindow() != null) {
+            d.getWindow().setLayout(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT);
+        }
+        trackView = tv;
+        trackDlg = d;
+        d.show();
+    }
+
+    private Runnable trackRefresh;
 
     // ==================================================================== import
 
@@ -1208,7 +1363,7 @@ public class MainActivity extends Activity implements Engine.Listener {
         if (req != REQ_IMPORT || result != RESULT_OK || data == null || data.getData() == null) return;
         final Uri uri = data.getData();
         if (eng.isPlaying()) eng.stop();
-        AlertDialog wait = busy("Loading audio…");
+        AlertDialog wait = busy("loading audio…");
         final boolean jamWasEmpty = s.lengthFrames() == 0;
         new Thread(() -> {
             Importer.Decoded dec = null;
@@ -1220,7 +1375,7 @@ public class MainActivity extends Activity implements Engine.Listener {
             } catch (IOException e) {
                 err = e.getMessage();
             } catch (OutOfMemoryError e) {
-                err = "That file is too long to load on this phone.";
+                err = "that file is too long to load on this phone.";
             }
             final Importer.Decoded d = dec;
             final Analyzer.Result r = an;
@@ -1247,12 +1402,12 @@ public class MainActivity extends Activity implements Engine.Listener {
     /** Applies (empty jam) or offers (existing jam) the tempo/key found in an import. */
     private void offerDetected(Track t, Analyzer.Result r, boolean auto) {
         boolean hasTempo = r != null && r.bpm > 0, hasKey = r != null && r.keyRoot >= 0;
-        if (!hasTempo && !hasKey) { note("Imported " + t.name + "."); return; }
+        if (!hasTempo && !hasKey) { note("imported " + t.name + "."); return; }
         if (auto) {
-            StringBuilder b = new StringBuilder("Imported " + t.name + ".");
-            if (hasTempo) { s.bpm = Math.max(40, Math.min(240, r.bpm)); b.append(" Tempo set to ").append(fmtBpm(s.bpm)).append(" BPM"); }
-            if (hasKey) { s.keyRoot = r.keyRoot; s.keyMinor = r.minor; b.append(hasTempo ? ", key " : " Key set to ").append(s.keyLabel()); }
-            b.append(". Tap BPM or KEY to adjust.");
+            StringBuilder b = new StringBuilder("imported " + t.name + ".");
+            if (hasTempo) { s.bpm = Math.max(40, Math.min(240, r.bpm)); b.append(" tempo set to ").append(fmtBpm(s.bpm)).append(" BPM"); }
+            if (hasKey) { s.keyRoot = r.keyRoot; s.keyMinor = r.minor; b.append(hasTempo ? ", key " : " key set to ").append(s.keyLabel()); }
+            b.append(". tap BPM or KEY to adjust.");
             refreshAll();
             save();
             note(b.toString());
@@ -1260,12 +1415,12 @@ public class MainActivity extends Activity implements Engine.Listener {
         }
         LinearLayout l = body();
         if (hasTempo) {
-            heading(l, "Tempo");
-            para(l, "About " + fmtBpm(r.bpm) + " BPM (jam is " + fmtBpm(s.bpm) + ")", 14, Ui.CREAM);
+            heading(l, "tempo");
+            para(l, "about " + fmtBpm(r.bpm) + " BPM (jam is " + fmtBpm(s.bpm) + ")", 14, Ui.CREAM);
             tempoChoices(l, r.bpm);
         }
         if (hasKey) {
-            heading(l, "Key");
+            heading(l, "key");
             para(l, Analyzer.keyName(r.keyRoot, r.minor) + " (jam is " + s.keyLabel() + ")", 14, Ui.CREAM);
             LinearLayout row = chipRow(l);
             addChip(row, "USE FOR JAM", v -> {
@@ -1273,10 +1428,10 @@ public class MainActivity extends Activity implements Engine.Listener {
                 s.keyMinor = r.minor;
                 refreshAll();
                 save();
-                note("Jam key set to " + s.keyLabel());
+                note("jam key set to " + s.keyLabel());
             });
         }
-        show(dlg("Found in " + t.name).setView(scroll(l)).setPositiveButton("KEEP CURRENT", null));
+        show(dlg("found in " + t.name).setView(scroll(l)).setPositiveButton("KEEP CURRENT", null));
     }
 
     // ===================================================================== jams
@@ -1301,10 +1456,10 @@ public class MainActivity extends Activity implements Engine.Listener {
     }
 
     private void newJam() {
-        if (s.lengthFrames() == 0 && s.tracks.isEmpty()) { note("You're already on a fresh jam."); return; }
+        if (s.lengthFrames() == 0 && s.tracks.isEmpty()) { note("you're already on a fresh jam."); return; }
         leaveCurrent();
         openJam(Jam.create(root));
-        note("New jam");
+        note("new jam");
     }
 
     private void showJams() {
@@ -1323,7 +1478,7 @@ public class MainActivity extends Activity implements Engine.Listener {
             if (i.len == 0 && !d.equals(s.dir)) continue;
             infos.add(i);
         }
-        if (infos.isEmpty()) { note("No saved jams yet."); return; }
+        if (infos.isEmpty()) { note("no saved jams yet."); return; }
         CharSequence[] labels = new CharSequence[infos.size()];
         for (int k = 0; k < infos.size(); k++) {
             Jam.Info i = infos.get(k);
@@ -1332,7 +1487,7 @@ public class MainActivity extends Activity implements Engine.Listener {
                     + String.format(Locale.US, "%d:%02d", sec / 60, sec % 60) + "  ·  " + i.tracks
                     + (i.tracks == 1 ? " track" : " tracks");
         }
-        AlertDialog d = list("Jams", labels, w -> openJamDir(infos.get(w).dir));
+        AlertDialog d = list("jams", labels, w -> openJamDir(infos.get(w).dir));
         if (d.getListView() != null) {
             d.getListView().setOnItemLongClickListener((parent, view, pos, id) -> {
                 d.dismiss();
@@ -1341,25 +1496,25 @@ public class MainActivity extends Activity implements Engine.Listener {
                 return true;
             });
         }
-        note("Long-press a jam to delete it.");
+        note("long-press a jam to delete it.");
     }
 
     private void openJamDir(File dir) {
         if (dir.equals(s.dir)) return;
         Jam nj = Jam.load(dir);
-        if (nj == null) { note("Couldn't open that jam."); return; }
+        if (nj == null) { note("couldn't open that jam."); return; }
         leaveCurrent();
         openJam(nj);
     }
 
     private void confirmDeleteJam(File dir, String name) {
-        show(dlg(null).setMessage("Delete \"" + name + "\" and all its tracks?")
+        show(dlg(null).setMessage("delete \"" + name + "\" and all its tracks?")
                 .setPositiveButton("DELETE", (d, w) -> {
                     boolean current = dir.equals(s.dir);
                     if (current && eng.isPlaying()) eng.stop();
                     Jam.deleteDir(dir);
                     if (current) openJam(Jam.create(root));
-                    note("Deleted");
+                    note("deleted");
                 })
                 .setNegativeButton("CANCEL", null));
     }
@@ -1367,40 +1522,40 @@ public class MainActivity extends Activity implements Engine.Listener {
     // ==================================================================== export
 
     private void exportJam() {
-        if (s.lengthFrames() == 0) { note("Nothing to export yet."); return; }
+        if (s.lengthFrames() == 0) { note("nothing to export yet."); return; }
         Exporter.Format[] fs = Exporter.Format.values();
         CharSequence[] items = new CharSequence[fs.length];
         for (int i = 0; i < fs.length; i++) items[i] = fs[i].label + "\n" + fs[i].hint;
-        list("Export jam as", items, w -> runExport(fs[w]));
+        list("export jam as", items, w -> runExport(fs[w]));
     }
 
     private void runExport(Exporter.Format fmt) {
         if (eng.isPlaying()) eng.stop();
         save();
-        AlertDialog wait = busy("Rendering " + fmt.ext.toUpperCase(Locale.ROOT) + "…");
+        AlertDialog wait = busy("rendering " + fmt.ext.toUpperCase(Locale.ROOT) + "…");
         final Jam cur = s;
         new Thread(() -> {
             try {
                 Uri u = Exporter.export(this, cur, fmt, f -> h.post(() -> wait.setMessage(
-                        "Rendering " + fmt.ext.toUpperCase(Locale.ROOT) + "…  " + Math.round(f * 100) + "%")));
+                        "rendering " + fmt.ext.toUpperCase(Locale.ROOT) + "…  " + Math.round(f * 100) + "%")));
                 h.post(() -> {
                     wait.dismiss();
-                    note("Saved to Music/Roughhouse");
+                    note("saved to Music/Roughhouse");
                     Intent send = new Intent(Intent.ACTION_SEND);
                     send.setType(fmt.mime);
                     send.putExtra(Intent.EXTRA_STREAM, u);
                     send.addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION);
-                    startActivity(Intent.createChooser(send, "Share jam"));
+                    startActivity(Intent.createChooser(send, "share jam"));
                 });
             } catch (Exception e) {
                 h.post(() -> {
                     wait.dismiss();
-                    note("Export failed: " + e.getMessage());
+                    note("export failed: " + e.getMessage());
                 });
             } catch (OutOfMemoryError e) {
                 h.post(() -> {
                     wait.dismiss();
-                    note("Export failed: out of memory.");
+                    note("export failed: out of memory.");
                 });
             }
         }, "rh-export").start();
@@ -1414,7 +1569,7 @@ public class MainActivity extends Activity implements Engine.Listener {
         try {
             s.save();
         } catch (IOException e) {
-            note("Save failed: " + e.getMessage());
+            note("save failed: " + e.getMessage());
         }
     }
 }
