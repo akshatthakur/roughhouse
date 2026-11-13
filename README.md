@@ -38,6 +38,7 @@ words in caps are the labels on the buttons in the app.
 | **KEY** | the jam's key. picking one shows its scale and chords, along with progressions in that key. long-press it to open the circle of fifths. |
 | **TUNE** | turns on the tuner without recording. |
 | **channel number** | arms that track, so the next take records over it. only the part you record over is replaced. if no track is armed, takes go to the first empty track or a new one. |
+| **timeline** | the strip above the tracks shows bar numbers and every track at once. tap or drag along it to move the playhead, while stopped or playing. |
 | **tap a lane** | opens the track view. |
 | **long-press a lane** | opens that track's menu. |
 | **M / S / FX** | mute, solo and effects. the effects are volume, pan, low cut, bass, treble, compression, echo synced to the tempo, and reverb. changing them never touches the recording. |
@@ -113,6 +114,8 @@ app/src/main/java/com/roughhouse/app/
   MainActivity.java  the main screen, dialogs, jams, importing, analysis and export
   Deck.java          drawn controls: cassette, counter, VU meter, tuner, keys, circle of fifths
   WaveView.java      a track lane: waveform, bar lines, live take, notes, level meter
+  Ruler.java         the timeline above the tracks, for moving the playhead
+  MelodyView.java    the melody summary: note usage and phrases
   TrackView.java     the full-screen track view: piano roll, chord row, zoom and scroll
   Ui.java            colours, fonts and styling helpers
   Engine.java        playback, recording, placing takes, live pitch, calibration
