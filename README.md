@@ -71,6 +71,12 @@ you can look at each part on its own or choose *see all analysis*. it covers:
   track view, marked as suggested
 - the scale and chords for the key, and some common progressions written out in it
 
+**fixing what it got wrong.** detection isn't perfect, so you can correct it in the track
+view. tap a note to select it, then move it UP or DOWN a semitone, make it SHORTER or LONGER,
+or DELETE it. long-press an empty spot on the piano roll to add a note there. tap a chord, or
+an empty bar in the chord row, to pick a different chord (or none). corrections are saved,
+and *analyze again* asks before it replaces them.
+
 the detected notes can also be drawn on the lane, with out-of-key notes in red. melody
 detection follows one note at a time, so it works on a single voice or instrument. chord
 detection is for parts where you're playing chords.

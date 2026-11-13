@@ -204,6 +204,7 @@ final class Analyzer {
         final java.util.ArrayList<Chord> chords = new java.util.ArrayList<>();
         int low = -1, high = -1;   // melody range (midi)
         float avgCents;            // average tuning offset across notes
+        boolean edited;            // notes or chords were corrected by hand
     }
 
     /** Everything the analysis sheet shows. beatFrames/beatsPerBar come from the jam grid. */
@@ -249,6 +250,19 @@ final class Analyzer {
         return best > 0.42 ? name : null;
     }
 
+    /** Keeps notes in time order and the range current after a hand edit. */
+    static void refreshAfterEdit(Full f) {
+        f.edited = true;
+        f.notes.sort((x, y) -> Long.compare(x.start, y.start));
+        f.chords.sort((x, y) -> Integer.compare(x.bar, y.bar));
+        f.low = -1;
+        f.high = -1;
+        for (Note n : f.notes) {
+            if (f.low < 0 || n.midi < f.low) f.low = n.midi;
+            if (n.midi > f.high) f.high = n.midi;
+        }
+    }
+
     // ------------------------------------------------------------- storage
 
     static org.json.JSONObject toJson(Full f) throws org.json.JSONException {
@@ -261,6 +275,7 @@ final class Analyzer {
         o.put("low", f.low);
         o.put("high", f.high);
         o.put("avgCents", f.avgCents);
+        o.put("edited", f.edited);
         org.json.JSONArray st = new org.json.JSONArray(), ln = new org.json.JSONArray(),
                 mi = new org.json.JSONArray(), ce = new org.json.JSONArray();
         for (Note n : f.notes) { st.put(n.start); ln.put(n.len); mi.put(n.midi); ce.put(Math.round(n.cents)); }
@@ -286,6 +301,7 @@ final class Analyzer {
         f.low = o.optInt("low", -1);
         f.high = o.optInt("high", -1);
         f.avgCents = (float) o.optDouble("avgCents", 0);
+        f.edited = o.optBoolean("edited", false);
         org.json.JSONArray st = o.getJSONArray("noteStart"), ln = o.getJSONArray("noteLen"),
                 mi = o.getJSONArray("noteMidi"), ce = o.getJSONArray("noteCents");
         for (int i = 0; i < st.length(); i++) {

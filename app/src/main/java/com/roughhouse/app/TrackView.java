@@ -40,10 +40,43 @@ final class TrackView extends View {
             @Override public boolean onSingleTapUp(MotionEvent e) {
                 float x = e.getX() - gutter();
                 if (x < 0) return true;
+                Analyzer.Full an = t.analysis;
+                // chord row: change the chord in that bar
+                if (an != null && lChordH > 0 && e.getY() >= lRulerH && e.getY() < lRulerH + lChordH) {
+                    int bar = (int) Math.floor((left + x * fpp) / lBar);
+                    if (bar >= 0) a.editChord(t, bar, lShowSugg);
+                    return true;
+                }
+                // a note: select it
+                Analyzer.Note hit = noteAt(e.getX(), e.getY());
+                if (hit != null) {
+                    select(hit);
+                    return true;
+                }
+                if (selected != null) { select(null); return true; }
                 a.seekTo((long) Math.max(0, left + x * fpp));
                 userMoved = false;
                 invalidate();
                 return true;
+            }
+
+            @Override public void onLongPress(MotionEvent e) {
+                Analyzer.Full an = t.analysis;
+                if (an == null || e.getX() < gutter() || e.getY() < lRollTop || e.getY() > lRollBot) return;
+                Analyzer.Note hit = noteAt(e.getX(), e.getY());
+                if (hit != null) { select(hit); return; }
+                // add a half-beat note at this pitch, snapped to the nearest half beat
+                int midi = lLo + (int) Math.floor((lRollBot - e.getY()) / lRowH);
+                double half = a.s.beatFrames(Engine.SR) / 2;
+                long at = Math.round(Math.round((left + (e.getX() - gutter()) * fpp) / half) * half);
+                Analyzer.Note n = new Analyzer.Note();
+                n.start = Math.max(0, at);
+                n.len = (int) Math.round(half);
+                n.midi = midi;
+                an.notes.add(n);
+                Analyzer.refreshAfterEdit(an);
+                a.analysisEdited(t);
+                select(n);
             }
         });
         sg = new ScaleGestureDetector(a, new ScaleGestureDetector.SimpleOnScaleGestureListener() {
@@ -75,6 +108,38 @@ final class TrackView extends View {
     private double clampLeft(double v) {
         float w = Math.max(1, getWidth() - gutter());
         return Math.max(0, Math.min(v, total() - w * fpp * 0.5));
+    }
+
+    // layout from the last draw, for hit testing
+    private float lRulerH, lChordH, lRollTop, lRollBot, lRowH;
+    private int lLo;
+    private double lBar;
+    private boolean lShowSugg;
+
+    interface OnSelect { void selected(Analyzer.Note n); }
+
+    Analyzer.Note selected;
+    OnSelect onSelect;
+
+    void select(Analyzer.Note n) {
+        selected = n;
+        if (onSelect != null) onSelect.selected(n);
+        invalidate();
+    }
+
+    /** The note drawn under (x, y), if any (with a little slack for small blocks). */
+    private Analyzer.Note noteAt(float x, float y) {
+        Analyzer.Full an = t.analysis;
+        if (an == null || y < lRollTop || y > lRollBot) return null;
+        float slack = 6 * Ui.density;
+        Analyzer.Note best = null;
+        for (Analyzer.Note n : an.notes) {
+            float x1 = gutter() + (float) ((n.start - left) / fpp), x2 = gutter() + (float) ((n.start + n.len - left) / fpp);
+            float ny = lRollBot - (n.midi - lLo + 1) * lRowH;
+            if (x >= x1 - slack && x <= Math.max(x2, x1 + 3 * Ui.density) + slack
+                    && y >= ny - slack && y <= ny + lRowH + slack) best = n;
+        }
+        return best;
     }
 
     private Analyzer.Full suggFor;
@@ -140,7 +205,7 @@ final class TrackView extends View {
         c.drawColor(Ui.LANE);
         java.util.List<Theory.Suggestion> sugg = suggestions(an);
         boolean showSugg = an != null && an.chords.isEmpty() && !sugg.isEmpty();
-        float rulerH = 22 * u, chordH = an != null && (!an.chords.isEmpty() || showSugg) ? 30 * u : 0, waveH = 64 * u;
+        float rulerH = 22 * u, chordH = an != null ? 30 * u : 0, waveH = 64 * u;
         float rollTop = rulerH + chordH, rollBot = H - waveH;
 
         // pitch range for the roll
@@ -149,6 +214,14 @@ final class TrackView extends View {
         if (hi - lo < 12) { int mid = (lo + hi) / 2; lo = mid - 6; hi = mid + 6; }
         int rows = hi - lo + 1;
         float rowH = (rollBot - rollTop) / rows;
+        lRulerH = rulerH;
+        lChordH = chordH;
+        lRollTop = rollTop;
+        lRollBot = rollBot;
+        lRowH = rowH;
+        lLo = lo;
+        lShowSugg = showSugg;
+        lBar = s.barFrames(Engine.SR);
         int root = s.keyRoot >= 0 ? s.keyRoot : (an != null ? an.base.keyRoot : -1);
         boolean minor = s.keyRoot >= 0 ? s.keyMinor : an != null && an.base.minor;
 
@@ -233,6 +306,13 @@ final class TrackView extends View {
 
         // chord row
         if (chordH > 0 && !showSugg) {
+            if (an.chords.isEmpty()) {
+                p.setTypeface(Ui.sansBold);
+                p.setTextSize(7.5f * u);
+                p.setColor(Ui.FAINT);
+                p.setTextAlign(Paint.Align.LEFT);
+                c.drawText("TAP A BAR HERE TO ADD A CHORD", gx + 6 * u, rulerH + chordH / 2 + 3 * u, p);
+            }
             line.setColor(0xFF1F1C19);
             c.drawRect(gx, rulerH, W, rulerH + chordH, line);
             p.setTypeface(Ui.sansBold);
@@ -261,9 +341,14 @@ final class TrackView extends View {
                 if (x2 < gx || x1 > W) continue;
                 float y = rollBot - (n.midi - lo + 1) * rowH;
                 boolean out = root >= 0 && !Theory.inKey(n.midi, root, minor);
-                line.setColor(out ? Ui.RED : Ui.AMBER);
+                boolean sel = n == selected;
+                line.setColor(sel ? Ui.CREAM : out ? Ui.RED : Ui.AMBER);
                 r.set(Math.max(gx, x1), y + 1, Math.max(Math.max(gx, x1) + 3 * u, x2 - 1), y + rowH - 1);
                 c.drawRoundRect(r, 2 * u, 2 * u, line);
+                if (sel) {
+                    line.setColor(Ui.AMBER);
+                    c.drawRect(r.left, r.bottom + 1, r.right, r.bottom + 3 * u, line);
+                }
                 String name = Pitch.noteName(n.midi);
                 if (r.width() > p.measureText(name) + 6 * u && rowH >= 9 * u) {
                     p.setColor(Ui.INK);
