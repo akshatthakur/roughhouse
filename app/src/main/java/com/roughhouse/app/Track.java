@@ -27,7 +27,8 @@ final class Track {
     boolean vocal;                 // shows the live pitch monitor while recording
 
     volatile float meter;          // peak level for the channel LED meter (set by the mixer)
-    Analyzer.Full analysis;        // last analysis result (not saved)
+    Analyzer.Full analysis;        // last analysis result (saved next to the audio)
+    boolean analysisDirty;         // analysis needs writing to disk
     boolean showNotes;             // draw detected notes on the lane
 
     Track(long id, String name) {

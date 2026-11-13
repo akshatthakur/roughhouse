@@ -50,27 +50,31 @@ final class Deck {
             p.setColor(Ui.PAPER);
             r.set(lx, ly, lx + lw, ly + lh);
             c.drawRoundRect(r, 3 * u, 3 * u, p);
-            // label stripes
-            p.setColor(recording ? Ui.RED : 0xFFD8452E);
-            c.drawRect(lx, ly + lh * 0.30f, lx + lw, ly + lh * 0.30f + 3 * u, p);
-            p.setColor(Ui.AMBER);
-            c.drawRect(lx, ly + lh * 0.30f + 3 * u, lx + lw, ly + lh * 0.30f + 5 * u, p);
-            // title (Times-style italic) and subline (Helvetica-style)
+            // title (Times-style italic) on its own line at the top of the label
             p.setColor(Ui.INK);
             p.setTypeface(Ui.serifItalic);
-            p.setTextSize(17 * u);
+            p.setTextSize(16 * u);
             p.setTextAlign(Paint.Align.LEFT);
             String t = ellipsize(title, p, lw - 16 * u);
-            c.drawText(t, lx + 8 * u, ly + lh * 0.24f, p);
+            float titleBase = ly + 20 * u;
+            c.drawText(t, lx + 8 * u, titleBase, p);
+            // label stripes, clear of the title's descenders
+            float stripe = titleBase + 7 * u;
+            p.setColor(recording ? Ui.RED : 0xFFD8452E);
+            c.drawRect(lx, stripe, lx + lw, stripe + 3 * u, p);
+            p.setColor(Ui.AMBER);
+            c.drawRect(lx, stripe + 3 * u, lx + lw, stripe + 5 * u, p);
+            // sub line (Helvetica-style) along the bottom edge of the label
             p.setTypeface(Ui.sansBold);
-            p.setTextSize(9.5f * u);
+            p.setTextSize(8.5f * u);
             p.setLetterSpacing(0.12f);
             p.setColor(0xFF6B6255);
-            c.drawText(ellipsize(sub, p, lw - 16 * u), lx + 8 * u, ly + lh - 6 * u, p);
+            float subBase = ly + lh - 6 * u;
+            c.drawText(ellipsize(sub, p, lw - 16 * u), lx + 8 * u, subBase, p);
             p.setLetterSpacing(0f);
 
-            // reel window cut into the label
-            float wy = ly + lh * 0.30f + 10 * u, wh = lh * 0.70f - 26 * u;
+            // reel window between the stripes and the sub line, with a gap on both sides
+            float wy = stripe + 5 * u + 6 * u, wh = Math.max(10 * u, (subBase - 8.5f * u - 6 * u) - wy);
             float wx = lx + lw * 0.17f, ww = lw * 0.66f;
             p.setColor(0xFF15110F);
             r.set(wx, wy, wx + ww, wy + wh);
@@ -317,16 +321,19 @@ final class Deck {
             c.drawRoundRect(r, 4 * u, 4 * u, p);
             p.setColor(0x22000000);
             c.drawRect(2 * u, h - 10 * u + drop, w - 2 * u, h - 5 * u + drop, p);
-            // LED
-            float ly = 9 * u + drop;
+            // LED, tucked into the top-right corner
+            float lx = w - 9 * u, ly = 9 * u + drop;
             p.setColor(lit ? (type == REC ? Ui.RED : Ui.GREEN) : 0xFF6E685C);
-            c.drawCircle(w / 2, ly, 3 * u, p);
+            c.drawCircle(lx, ly, 2.6f * u, p);
             if (lit && type == REC && level > 0) {
                 p.setColor(0x55D8452E);
-                c.drawCircle(w / 2, ly, (3 + 5 * Math.min(1, level * 2)) * u, p);
+                c.drawCircle(lx, ly, (2.6f + 4 * Math.min(1, level * 2)) * u, p);
             }
-            // icon
-            float cx = w / 2, cy = h * 0.52f + drop, s = Math.min(w, h) * 0.17f;
+            // icon sits in the space above the label, with a fixed gap between them
+            float labelBase = h - 10 * u + drop;
+            float labelTop = labelBase - 8.5f * u;
+            float s = Math.min(Math.min(w, h) * 0.15f, (labelTop - 6 * u - (3 * u + drop)) / 2.4f);
+            float cx = w / 2, cy = 3 * u + drop + (labelTop - 6 * u - 3 * u - drop) / 2 + 2 * u;
             p.setColor(type == REC ? Ui.RED : Ui.INK);
             path.reset();
             switch (type) {
@@ -359,7 +366,7 @@ final class Deck {
             p.setTextAlign(Paint.Align.CENTER);
             p.setColor(0xFF5A5347);
             String[] names = {"REW", "REC", "PLAY", "STOP"};
-            c.drawText(names[type], cx, h - 13 * u + drop, p);
+            c.drawText(names[type], cx, labelBase, p);
             p.setLetterSpacing(0f);
         }
 

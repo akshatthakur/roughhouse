@@ -23,10 +23,10 @@ final class Exporter {
     private Exporter() {}
 
     enum Format {
-        WAV("WAV", "Uncompressed, for DAWs", "wav", "audio/wav"),
-        FLAC("FLAC", "Lossless, about half the size", "flac", "audio/flac"),
-        M4A("M4A (AAC 256k)", "Small, plays everywhere", "m4a", "audio/mp4"),
-        MP3("MP3 (192k)", "Universal", "mp3", "audio/mpeg");
+        WAV("WAV", "uncompressed, for DAWs", "wav", "audio/wav"),
+        FLAC("FLAC", "lossless, about half the size", "flac", "audio/flac"),
+        M4A("M4A (AAC 256k)", "small, plays everywhere", "m4a", "audio/mp4"),
+        MP3("MP3 (192k)", "universal", "mp3", "audio/mpeg");
 
         final String label, hint, ext, mime;
 
@@ -46,7 +46,7 @@ final class Exporter {
     static Uri export(Context c, Jam s, Format fmt, Progress progress) throws IOException {
         final int sr = Engine.SR;
         long len = s.lengthFrames();
-        if (len == 0) throw new IOException("Nothing recorded yet");
+        if (len == 0) throw new IOException("nothing recorded yet");
         long total = len + sr * 2L; // 2 s tail for echo / reverb
 
         ContentResolver cr = c.getContentResolver();
@@ -58,7 +58,7 @@ final class Exporter {
         v.put(MediaStore.MediaColumns.RELATIVE_PATH, Environment.DIRECTORY_MUSIC + "/Roughhouse");
         v.put(MediaStore.MediaColumns.IS_PENDING, 1);
         Uri uri = cr.insert(MediaStore.Audio.Media.getContentUri(MediaStore.VOLUME_EXTERNAL_PRIMARY), v);
-        if (uri == null) throw new IOException("Couldn't create the file");
+        if (uri == null) throw new IOException("couldn't create the file");
 
         OutputStream raw = null;
         ParcelFileDescriptor pfd = null;
@@ -66,11 +66,11 @@ final class Exporter {
             Sink sink;
             if (fmt == Format.M4A) {
                 pfd = cr.openFileDescriptor(uri, "rw");
-                if (pfd == null) throw new IOException("Couldn't open the file");
+                if (pfd == null) throw new IOException("couldn't open the file");
                 sink = new AacSink(pfd, sr);
             } else {
                 raw = cr.openOutputStream(uri);
-                if (raw == null) throw new IOException("Couldn't open the file");
+                if (raw == null) throw new IOException("couldn't open the file");
                 OutputStream os = new BufferedOutputStream(raw, 1 << 16);
                 if (fmt == Format.WAV) sink = new WavSink(os, sr, total);
                 else if (fmt == Format.FLAC) sink = new FlacSink(os, sr, total);

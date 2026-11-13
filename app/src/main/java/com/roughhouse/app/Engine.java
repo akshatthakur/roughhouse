@@ -138,7 +138,7 @@ final class Engine {
             running = false;
             final String msg = String.valueOf(e.getMessage());
             ui.post(() -> {
-                l.onEngineError("Audio output failed: " + msg);
+                l.onEngineError("audio output failed: " + msg);
                 stop();
             });
         } finally {
@@ -225,7 +225,7 @@ final class Engine {
                 try {
                     recBuf = Arrays.copyOf(recBuf, recBuf.length * 2);
                 } catch (OutOfMemoryError e) {
-                    ui.post(() -> l.onEngineError("Out of memory: take stopped. Delete or export some tracks."));
+                    ui.post(() -> l.onEngineError("out of memory: take stopped. delete or export some tracks."));
                     break;
                 }
             }

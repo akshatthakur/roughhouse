@@ -249,6 +249,63 @@ final class Analyzer {
         return best > 0.42 ? name : null;
     }
 
+    // ------------------------------------------------------------- storage
+
+    static org.json.JSONObject toJson(Full f) throws org.json.JSONException {
+        org.json.JSONObject o = new org.json.JSONObject();
+        o.put("bpm", f.base.bpm);
+        o.put("bpmConf", f.base.bpmConfidence);
+        o.put("keyRoot", f.base.keyRoot);
+        o.put("minor", f.base.minor);
+        o.put("keyConf", f.base.keyConfidence);
+        o.put("low", f.low);
+        o.put("high", f.high);
+        o.put("avgCents", f.avgCents);
+        org.json.JSONArray st = new org.json.JSONArray(), ln = new org.json.JSONArray(),
+                mi = new org.json.JSONArray(), ce = new org.json.JSONArray();
+        for (Note n : f.notes) { st.put(n.start); ln.put(n.len); mi.put(n.midi); ce.put(Math.round(n.cents)); }
+        o.put("noteStart", st);
+        o.put("noteLen", ln);
+        o.put("noteMidi", mi);
+        o.put("noteCents", ce);
+        org.json.JSONArray cb = new org.json.JSONArray(), cn = new org.json.JSONArray();
+        for (Chord c : f.chords) { cb.put(c.bar); cn.put(c.name); }
+        o.put("chordBar", cb);
+        o.put("chordName", cn);
+        return o;
+    }
+
+    static Full fromJson(org.json.JSONObject o) throws org.json.JSONException {
+        Full f = new Full();
+        f.base = new Result();
+        f.base.bpm = (float) o.optDouble("bpm", 0);
+        f.base.bpmConfidence = (float) o.optDouble("bpmConf", 0);
+        f.base.keyRoot = o.optInt("keyRoot", -1);
+        f.base.minor = o.optBoolean("minor", false);
+        f.base.keyConfidence = (float) o.optDouble("keyConf", 0);
+        f.low = o.optInt("low", -1);
+        f.high = o.optInt("high", -1);
+        f.avgCents = (float) o.optDouble("avgCents", 0);
+        org.json.JSONArray st = o.getJSONArray("noteStart"), ln = o.getJSONArray("noteLen"),
+                mi = o.getJSONArray("noteMidi"), ce = o.getJSONArray("noteCents");
+        for (int i = 0; i < st.length(); i++) {
+            Note n = new Note();
+            n.start = st.getLong(i);
+            n.len = ln.getInt(i);
+            n.midi = mi.getInt(i);
+            n.cents = ce.getInt(i);
+            f.notes.add(n);
+        }
+        org.json.JSONArray cb = o.getJSONArray("chordBar"), cn = o.getJSONArray("chordName");
+        for (int i = 0; i < cb.length(); i++) {
+            Chord c = new Chord();
+            c.bar = cb.getInt(i);
+            c.name = cn.getString(i);
+            f.chords.add(c);
+        }
+        return f;
+    }
+
     /** Monophonic note transcription from a YIN pitch track (best on voice or single-note lines). */
     private static void transcribe(short[] x, int sr, Full f) {
         if (sr != 48000) return;
@@ -316,7 +373,7 @@ final class Analyzer {
     }
 
     static String keyName(int root, boolean minor) {
-        if (root < 0) return "No key";
+        if (root < 0) return "no key";
         return NOTES[root] + (minor ? " minor" : " major");
     }
 

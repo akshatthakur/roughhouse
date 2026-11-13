@@ -38,7 +38,7 @@ words in caps are the labels on the buttons in the app.
 | **KEY** | the jam's key. picking one shows its scale and chords, along with progressions in that key. long-press it to open the circle of fifths. |
 | **TUNE** | turns on the tuner without recording. |
 | **channel number** | arms that track, so the next take records over it. only the part you record over is replaced. if no track is armed, takes go to the first empty track or a new one. |
-| **tap a lane** | moves the playhead there. |
+| **tap a lane** | opens the track view. |
 | **long-press a lane** | opens that track's menu. |
 | **M / S / FX** | mute, solo and effects. the effects are volume, pan, low cut, bass, treble, compression, echo synced to the tempo, and reverb. changing them never touches the recording. |
 | **LOOP** | loops the jam. long-press to set where the loop starts and ends. |
@@ -51,7 +51,8 @@ words in caps are the labels on the buttons in the app.
 ## songwriting tools
 
 **analyzing a track.** long-press a lane and choose *analyze notes, key, tempo and chords*.
-it shows:
+the results are saved with the jam. after that, the same menu has an *analysis* option where
+you can look at each part on its own or choose *see all analysis*. it covers:
 - the tempo, with buttons to use it for the jam (or double or half of it)
 - the key, with a button to set it as the jam's key
 - the melody as note names bar by bar, with notes outside the key marked. it also shows
@@ -62,6 +63,11 @@ it shows:
 the detected notes can also be drawn on the lane, with out-of-key notes in red. melody
 detection follows one note at a time, so it works on a single voice or instrument. chord
 detection is for parts where you're playing chords.
+
+**track view.** tap a lane to open the track full screen. it shows bar numbers, the chord in
+each bar, the detected notes on a piano roll with their names, and the waveform underneath.
+pinch to zoom and drag to scroll. tapping moves the playhead, and the track view has its own
+REW, PLAY and STOP keys. FIT zooms back out to the whole track.
 
 **circle of fifths.** long-press KEY, or open it from •••. tapping a key highlights it and
 the keys closest to it, and shows its relative key, scale, chords and progressions below
@@ -104,6 +110,7 @@ app/src/main/java/com/roughhouse/app/
   MainActivity.java  the main screen, dialogs, jams, importing, analysis and export
   Deck.java          drawn controls: cassette, counter, VU meter, tuner, keys, circle of fifths
   WaveView.java      a track lane: waveform, bar lines, live take, notes, level meter
+  TrackView.java     the full-screen track view: piano roll, chord row, zoom and scroll
   Ui.java            colours, fonts and styling helpers
   Engine.java        playback, recording, placing takes, live pitch, calibration
   Mixer.java         mixes tracks through effects, reverb, metronome and a limiter

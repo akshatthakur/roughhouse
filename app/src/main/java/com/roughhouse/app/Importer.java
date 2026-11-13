@@ -40,7 +40,7 @@ final class Importer {
                 String mime = f.getString(MediaFormat.KEY_MIME);
                 if (mime != null && mime.startsWith("audio/")) { track = i; fmt = f; break; }
             }
-            if (track < 0) throw new IOException("No audio found in that file");
+            if (track < 0) throw new IOException("no audio found in that file");
             ex.selectTrack(track);
             long durUs = fmt.containsKey(MediaFormat.KEY_DURATION) ? fmt.getLong(MediaFormat.KEY_DURATION) : 0;
             int srcRate = fmt.getInteger(MediaFormat.KEY_SAMPLE_RATE);
@@ -103,9 +103,9 @@ final class Importer {
             d.data = toTrack(resample(mono, n, srcRate, Engine.SR));
             return d;
         } catch (OutOfMemoryError e) {
-            throw new IOException("That file is too long to load on this phone");
+            throw new IOException("that file is too long to load on this phone");
         } catch (RuntimeException e) {
-            throw new IOException("Couldn't read that file (" + e.getClass().getSimpleName() + ")");
+            throw new IOException("couldn't read that file (" + e.getClass().getSimpleName() + ")");
         } finally {
             if (codec != null) {
                 try { codec.stop(); } catch (Exception ignored) {}
@@ -154,7 +154,7 @@ final class Importer {
             if (cur != null && cur.moveToFirst()) name = cur.getString(0);
         } catch (RuntimeException ignored) {
         }
-        if (name == null) name = "Imported";
+        if (name == null) name = "imported";
         int dot = name.lastIndexOf('.');
         if (dot > 0) name = name.substring(0, dot);
         return name.length() > 28 ? name.substring(0, 28) : name;
