@@ -39,7 +39,8 @@ final class WaveView extends View {
             @Override public boolean onDown(MotionEvent e) { return true; }
 
             @Override public boolean onSingleTapUp(MotionEvent e) {
-                a.openTrack(t);
+                if (a.session) a.openTrack(t);
+                else a.showTrackMenu(t);
                 return true;
             }
 
@@ -88,7 +89,7 @@ final class WaveView extends View {
         }
 
         boolean audible = a.isAudible(t);
-        boolean notes = t.showNotes && t.analysis != null && !t.analysis.notes.isEmpty();
+        boolean notes = a.session && t.showNotes && t.analysis != null && !t.analysis.notes.isEmpty();
         float[] pk = t.peaks;
         wave.setColor(!audible ? 0xFF3A3630 : notes ? 0x66E9A23B : Ui.AMBER);
         float[] l = buf(w * 4);
@@ -132,7 +133,7 @@ final class WaveView extends View {
 
         boolean armed = t == a.nextRecTrack();
         label.setColor(armed ? Ui.RED : Ui.DIM);
-        c.drawText(t.name.toUpperCase(java.util.Locale.ROOT) + (t.vocal ? "  ·  VOX" : ""),
+        c.drawText(t.name.toUpperCase(java.util.Locale.ROOT) + (t.vocal && a.session ? "  ·  VOX" : ""),
                 5 * u, 12 * u, label);
 
         // channel LED meter: 10 segments, green / amber / red

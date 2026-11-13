@@ -22,7 +22,7 @@ final class Ruler extends View {
         this.a = a;
         gd = new GestureDetector(a, new GestureDetector.SimpleOnGestureListener() {
             @Override public boolean onDown(MotionEvent e) {
-                if (!inLabels(e)) seekAt(e.getX());
+                if (!a.session || !inLabels(e)) seekAt(e.getX());
                 return true;
             }
 
@@ -32,14 +32,14 @@ final class Ruler extends View {
             }
 
             @Override public boolean onSingleTapUp(MotionEvent e) {
-                Jam.Marker m = inLabels(e) ? markerAt(e.getX()) : null;
+                Jam.Marker m = a.session && inLabels(e) ? markerAt(e.getX()) : null;
                 if (m != null) a.loopSection(m);
                 else seekAt(e.getX());
                 return true;
             }
 
             @Override public void onLongPress(MotionEvent e) {
-                a.markerMenu(frameAt(e.getX()));
+                if (a.session) a.markerMenu(frameAt(e.getX()));
             }
         });
     }
@@ -112,7 +112,7 @@ final class Ruler extends View {
         p.setTypeface(Ui.sansBold);
         p.setTextSize(9 * u);
         p.setTextAlign(Paint.Align.LEFT);
-        java.util.List<Jam.Marker> ms = s.sortedMarkers();
+        java.util.List<Jam.Marker> ms = a.session ? s.sortedMarkers() : new java.util.ArrayList<>();
         for (int i = 0; i < ms.size(); i++) {
             Jam.Marker m = ms.get(i);
             float x = (float) (m.bar * bar() / fpp);

@@ -10,6 +10,20 @@ it's written in Java and runs on Android 10 and up. it records at 48 kHz, with m
 and a stereo mix. there's no limit on tracks apart from your phone's memory, and each
 minute of a track takes about 5.8 MB.
 
+## two modes
+
+Roughhouse has a **scratch** mode for getting things down and a **session** mode for working
+on them. the line under the ROUGHHOUSE name shows which one you're in, and tapping it
+switches. you can also switch under *•••*. a fresh install starts in scratch mode.
+
+scratch mode keeps recording and playback, the timeline, tracks with mute, solo and effects,
+the click and tempo, UNDO, jams, importing, exporting audio, lyrics, and simple editing (trim
+and move). tapping a lane opens its menu.
+
+session mode adds everything else in this readme: time signature, KEY and the circle of
+fifths, the tuner, analysis and the track view, splitting and fades, sections, bouncing,
+MIDI export and backups. tapping a lane opens the track view.
+
 ## installing
 
 every push to `main` builds the app and puts it in the **latest** release:
