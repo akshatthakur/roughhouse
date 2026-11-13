@@ -28,6 +28,53 @@ final class Jam {
     volatile int beatsPerBar = 4, beatUnit = 4;   // time signature
     volatile int keyRoot = -1;                    // 0 = C, -1 = not set
     volatile boolean keyMinor;
+    volatile String lyrics = "";
+    final CopyOnWriteArrayList<Marker> markers = new CopyOnWriteArrayList<>();
+
+    /** A named section starting at a bar (0-based), like "verse" or "chorus". */
+    static final class Marker {
+        int bar;
+        String name;
+
+        Marker(int bar, String name) { this.bar = bar; this.name = name; }
+    }
+
+    /** Markers sorted by bar. */
+    java.util.List<Marker> sortedMarkers() {
+        java.util.ArrayList<Marker> m = new java.util.ArrayList<>(markers);
+        m.sort((a, b) -> Integer.compare(a.bar, b.bar));
+        return m;
+    }
+
+    /** Frames per bar. */
+    double barFrames(int sr) {
+        return beatFrames(sr) * Math.max(1, beatsPerBar);
+    }
+
+    /**
+     * Lyric lines pinned to bars. A line like "[9] words" or "[bar 9] words" pins it (and the
+     * untagged lines after it) to bar 9. Returns 1-based bar -> text, in order.
+     */
+    static java.util.TreeMap<Integer, String> pinnedLyrics(String text) {
+        java.util.TreeMap<Integer, String> out = new java.util.TreeMap<>();
+        java.util.regex.Pattern tag = java.util.regex.Pattern.compile("^\\s*\\[(?:bar\\s*)?(\\d+)\\]\\s*(.*)$",
+                java.util.regex.Pattern.CASE_INSENSITIVE);
+        int bar = -1;
+        for (String line : text.split("\\n")) {
+            java.util.regex.Matcher m = tag.matcher(line);
+            String words;
+            if (m.matches()) {
+                bar = Integer.parseInt(m.group(1));
+                words = m.group(2).trim();
+            } else {
+                words = line.trim();
+            }
+            if (bar < 1 || words.isEmpty()) continue;
+            String prev = out.get(bar);
+            out.put(bar, prev == null ? words : prev + " / " + words);
+        }
+        return out;
+    }
 
     /** Frames per metronome beat (the time signature's denominator note gets the BPM). */
     double beatFrames(int sr) {
@@ -92,6 +139,15 @@ final class Jam {
             o.put("beatUnit", beatUnit);
             o.put("keyRoot", keyRoot);
             o.put("keyMinor", keyMinor);
+            o.put("lyrics", lyrics);
+            JSONArray ma = new JSONArray();
+            for (Marker m : markers) {
+                JSONObject mj = new JSONObject();
+                mj.put("bar", m.bar);
+                mj.put("name", m.name);
+                ma.put(mj);
+            }
+            o.put("markers", ma);
             o.put("len", lengthFrames());
             JSONArray a = new JSONArray();
             for (Track t : tracks) {
@@ -160,6 +216,12 @@ final class Jam {
             s.beatUnit = o.optInt("beatUnit", 4);
             s.keyRoot = o.optInt("keyRoot", -1);
             s.keyMinor = o.optBoolean("keyMinor", false);
+            s.lyrics = o.optString("lyrics", "");
+            JSONArray ma = o.optJSONArray("markers");
+            if (ma != null) for (int i = 0; i < ma.length(); i++) {
+                JSONObject mj = ma.getJSONObject(i);
+                s.markers.add(new Marker(mj.optInt("bar", 0), mj.optString("name", "section")));
+            }
             JSONArray a = o.optJSONArray("tracks");
             if (a != null) for (int i = 0; i < a.length(); i++) {
                 JSONObject j = a.getJSONObject(i);

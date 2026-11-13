@@ -77,6 +77,25 @@ final class TrackView extends View {
         return Math.max(0, Math.min(v, total() - w * fpp * 0.5));
     }
 
+    private Analyzer.Full suggFor;
+    private int suggKey = -99;
+    private java.util.List<Theory.Suggestion> suggCache = new java.util.ArrayList<>();
+
+    /** Chord suggestions for the melody (cached until the analysis or key changes). */
+    private java.util.List<Theory.Suggestion> suggestions(Analyzer.Full an) {
+        if (an == null || an.notes.isEmpty()) return java.util.Collections.emptyList();
+        Jam s = a.s;
+        int root = s.keyRoot >= 0 ? s.keyRoot : an.base.keyRoot;
+        boolean minor = s.keyRoot >= 0 ? s.keyMinor : an.base.minor;
+        int k = root * 2 + (minor ? 1 : 0) + s.beatsPerBar * 100 + Math.round(s.bpm * 10) * 10000;
+        if (an != suggFor || k != suggKey) {
+            suggFor = an;
+            suggKey = k;
+            suggCache = Theory.harmonize(an.notes, root, minor, s.beatFrames(Engine.SR), Math.max(1, s.beatsPerBar));
+        }
+        return suggCache;
+    }
+
     /** Zooms to about four bars around a point (used when jumping to a phrase). */
     void focusOn(long frame) {
         post(() -> {
@@ -119,7 +138,9 @@ final class TrackView extends View {
         }
 
         c.drawColor(Ui.LANE);
-        float rulerH = 22 * u, chordH = an != null && !an.chords.isEmpty() ? 30 * u : 0, waveH = 64 * u;
+        java.util.List<Theory.Suggestion> sugg = suggestions(an);
+        boolean showSugg = an != null && an.chords.isEmpty() && !sugg.isEmpty();
+        float rulerH = 22 * u, chordH = an != null && (!an.chords.isEmpty() || showSugg) ? 30 * u : 0, waveH = 64 * u;
         float rollTop = rulerH + chordH, rollBot = H - waveH;
 
         // pitch range for the roll
@@ -175,8 +196,43 @@ final class TrackView extends View {
             }
         }
 
+        // section names in the ruler
+        p.setTypeface(Ui.sansBold);
+        p.setTextSize(9 * u);
+        p.setTextAlign(Paint.Align.LEFT);
+        for (Jam.Marker mk : s.sortedMarkers()) {
+            float x = gx + (float) ((mk.bar * bar - left) / fpp);
+            if (x < gx || x > W) continue;
+            line.setColor(Ui.AMBER);
+            c.drawRect(x, 0, x + 1.5f * u, rulerH, line);
+            p.setColor(Ui.AMBER);
+            c.drawText(mk.name, x + 4 * u, 9 * u, p);
+        }
+
+        // suggested chords when the track has none of its own
+        if (showSugg) {
+            line.setColor(0xFF1F1C19);
+            c.drawRect(gx, rulerH, W, rulerH + chordH, line);
+            p.setTypeface(Ui.sansBold);
+            p.setTextSize(11 * u);
+            for (Theory.Suggestion g : sugg) {
+                float x1 = gx + (float) ((g.bar * bar - left) / fpp), x2 = gx + (float) (((g.bar + 1) * bar - left) / fpp);
+                if (x2 < gx || x1 > W) continue;
+                r.set(Math.max(gx, x1) + 2 * u, rulerH + 4 * u, x2 - 2 * u, rulerH + chordH - 4 * u);
+                if (r.width() < 6 * u) continue;
+                line.setColor(0xFF2A2621);
+                c.drawRoundRect(r, 3 * u, 3 * u, line);
+                p.setColor(0xFFB7A57F);
+                String label = g.best + (g.alt != null && p.measureText(g.best + " / " + g.alt) < r.width() - 6 * u ? " / " + g.alt : "");
+                if (p.measureText(label) < r.width() - 6 * u) c.drawText(label, r.left + 5 * u, r.centerY() + 4 * u, p);
+            }
+            p.setTextSize(7.5f * u);
+            p.setColor(Ui.FAINT);
+            c.drawText("SUGGESTED", 4 * u, rulerH + chordH / 2 + 3 * u, p);
+        }
+
         // chord row
-        if (chordH > 0) {
+        if (chordH > 0 && !showSugg) {
             line.setColor(0xFF1F1C19);
             c.drawRect(gx, rulerH, W, rulerH + chordH, line);
             p.setTypeface(Ui.sansBold);

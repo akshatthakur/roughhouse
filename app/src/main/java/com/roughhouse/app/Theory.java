@@ -67,4 +67,78 @@ final class Theory {
         }
         return out;
     }
+
+    // ------------------------------------------------------ melody harmonizer
+
+    /** A suggested chord for one bar, with a second choice when it's close. */
+    static final class Suggestion {
+        int bar;          // 0-based
+        String best, alt; // alt may be null
+        int bestRoot;     // pitch class of the best chord's root
+        boolean bestMinor, bestDim;
+    }
+
+    /**
+     * For each bar with melody, picks the chords from the key whose tones cover the most of
+     * the melody (weighted by note length, with the downbeat counting extra).
+     */
+    static ArrayList<Suggestion> harmonize(java.util.List<Analyzer.Note> notes, int root, boolean minor,
+                                           double beatFrames, int beatsPerBar) {
+        ArrayList<Suggestion> out = new ArrayList<>();
+        if (root < 0 || notes.isEmpty()) return out;
+        double bar = beatFrames * Math.max(1, beatsPerBar);
+        int[] sc = scale(root, minor);
+        String[] q = minor ? MIN_Q : MAJ_Q;
+        // candidate triads: the seven diatonic chords (+ major V in minor)
+        int n = minor ? 8 : 7;
+        int[][] tones = new int[n][];
+        String[] names = new String[n];
+        int[] roots = new int[n];
+        for (int i = 0; i < 7; i++) {
+            int r = sc[i], third = sc[(i + 2) % 7], fifth = sc[(i + 4) % 7];
+            tones[i] = new int[]{r, third, fifth};
+            names[i] = Analyzer.NOTES[r] + q[i];
+            roots[i] = r;
+        }
+        if (minor) {
+            int r = sc[4];
+            tones[7] = new int[]{r, (r + 4) % 12, (r + 7) % 12};
+            names[7] = Analyzer.NOTES[r];
+            roots[7] = r;
+        }
+        int bars = (int) Math.ceil((notes.get(notes.size() - 1).start + notes.get(notes.size() - 1).len) / bar);
+        for (int b = 0; b < bars; b++) {
+            double bs = b * bar, be = bs + bar;
+            double[] w = new double[12];
+            double total = 0;
+            for (Analyzer.Note nt : notes) {
+                double s0 = Math.max(bs, nt.start), s1 = Math.min(be, nt.start + nt.len);
+                if (s1 <= s0) continue;
+                double weight = s1 - s0;
+                if (nt.start <= bs + beatFrames * 0.25 && nt.start + nt.len > bs) weight *= 1.5; // downbeat
+                w[Math.floorMod(nt.midi, 12)] += weight;
+                total += weight;
+            }
+            if (total <= 0) continue;
+            int best = -1, second = -1;
+            double bestS = -1e9, secondS = -1e9;
+            for (int c = 0; c < n; c++) {
+                double cover = 0;
+                for (int t : tones[c]) cover += w[t];
+                double score = cover / total - (c == 6 && !minor ? 0.15 : 0) - (c == 1 && minor ? 0.15 : 0); // diminished last
+                if (c == 0) score += 0.05; // mild pull toward the home chord
+                if (score > bestS) { second = best; secondS = bestS; best = c; bestS = score; }
+                else if (score > secondS) { second = c; secondS = score; }
+            }
+            Suggestion sg = new Suggestion();
+            sg.bar = b;
+            sg.best = names[best];
+            sg.bestRoot = roots[best];
+            sg.bestMinor = names[best].endsWith("m");
+            sg.bestDim = names[best].endsWith("dim");
+            if (second >= 0 && bestS - secondS < 0.12) sg.alt = names[second];
+            out.add(sg);
+        }
+        return out;
+    }
 }
