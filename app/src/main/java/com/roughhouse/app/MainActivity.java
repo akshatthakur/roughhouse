@@ -1147,8 +1147,26 @@ public class MainActivity extends Activity implements Engine.Listener {
             if (f.notes.isEmpty()) {
                 para(l, "no single-note melody found. this works best on one voice or instrument at a time.", 14, Ui.DIM);
             } else {
-                para(l, melodyText(f, root, minor), 14, Ui.CREAM);
-                if (root >= 0) para(l, "* outside " + Analyzer.keyName(root, minor), 12, Ui.DIM);
+                MelodyView mv = new MelodyView(this, f, root, minor, s.beatFrames(SR), Math.max(1, s.beatsPerBar));
+                int outCount = 0;
+                if (root >= 0) for (Analyzer.Note n : f.notes) if (!Theory.inKey(n.midi, root, minor)) outCount++;
+                String summary = f.notes.size() + " notes in " + mv.totalPhrases
+                        + (mv.totalPhrases == 1 ? " phrase" : " phrases");
+                int repeated = mv.totalPhrases - mv.phrases.size();
+                if (repeated > 0) summary += ", " + repeated + (repeated == 1 ? " of them a repeat." : " of them repeats.");
+                else summary += ".";
+                if (root >= 0) summary += outCount == 0 ? " every note is in " + Analyzer.keyName(root, minor) + "."
+                        : " " + outCount + (outCount == 1 ? " note falls" : " notes fall") + " outside "
+                        + Analyzer.keyName(root, minor) + " (in red).";
+                para(l, summary, 14, Ui.CREAM);
+                LinearLayout.LayoutParams mlp = new LinearLayout.LayoutParams(-1, -2);
+                mlp.topMargin = dp(10);
+                l.addView(mv, mlp);
+                if (mv.phrases.size() > MelodyView.MAX_ROWS) {
+                    para(l, "showing the first " + MelodyView.MAX_ROWS + " of " + mv.phrases.size()
+                            + " different phrases. the track view has all of them.", 12, Ui.DIM);
+                }
+                pendingPhrase = mv;
                 LinearLayout row = chipRow(l);
                 addChip(row, t.showNotes ? "HIDE NOTES ON LANE" : "SHOW NOTES ON LANE", v -> {
                     t.showNotes = !t.showNotes;
@@ -1175,9 +1193,20 @@ public class MainActivity extends Activity implements Engine.Listener {
         if ((which & (A_MELODY | A_CHORDS)) != 0) {
             para(l, "bars and beats follow the jam's tempo and time signature.", 12, Ui.DIM);
         }
-        show(dlg(all ? t.name : title).setView(scroll(l)).setPositiveButton("DONE", null)
+        AlertDialog sheet = show(dlg(all ? t.name : title).setView(scroll(l)).setPositiveButton("DONE", null)
                 .setNeutralButton("TRACK VIEW", (d, w) -> openTrack(t)));
+        if (pendingPhrase != null) {
+            pendingPhrase.onPhrase = frame -> {
+                sheet.dismiss();
+                seekTo(Math.max(0, frame - (long) (s.beatFrames(SR) / 2)));
+                openTrack(t);
+                if (trackView != null) trackView.focusOn(frame);
+            };
+            pendingPhrase = null;
+        }
     }
+
+    private MelodyView pendingPhrase;
 
     private void tempoChoices(LinearLayout l, float bpm) {
         LinearLayout row = chipRow(l);
@@ -1197,29 +1226,6 @@ public class MainActivity extends Activity implements Engine.Listener {
         int oct = semis / 12, rest = semis % 12;
         if (oct == 0) return semis + " semitones";
         return oct + (oct == 1 ? " octave" : " octaves") + (rest > 0 ? " + " + rest : "");
-    }
-
-    private String melodyText(Analyzer.Full f, int root, boolean minor) {
-        StringBuilder b = new StringBuilder();
-        double bf = s.beatFrames(SR);
-        int bpb = Math.max(1, s.beatsPerBar);
-        long lastBar = -1;
-        int shown = 0;
-        for (Analyzer.Note n : f.notes) {
-            if (shown++ >= 96) { b.append("  …"); break; }
-            long beat = (long) Math.floor(n.start / bf);
-            long bar = beat / bpb;
-            if (bar != lastBar) {
-                if (b.length() > 0) b.append('\n');
-                b.append("bar ").append(bar + 1).append(":  ");
-                lastBar = bar;
-            } else {
-                b.append("  ");
-            }
-            b.append(Pitch.noteName(n.midi));
-            if (root >= 0 && !Theory.inKey(n.midi, root, minor)) b.append('*');
-        }
-        return b.toString();
     }
 
     private static String chordText(Analyzer.Full f) {

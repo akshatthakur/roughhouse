@@ -55,8 +55,11 @@ the results are saved with the jam. after that, the same menu has an *analysis* 
 you can look at each part on its own or choose *see all analysis*. it covers:
 - the tempo, with buttons to use it for the jam (or double or half of it)
 - the key, with a button to set it as the jam's key
-- the melody as note names bar by bar, with notes outside the key marked. it also shows
-  your range and whether you're singing or playing sharp or flat on average
+- the melody, summarized: a chart of how much each note is used, then the melody split into
+  phrases at the rests. each phrase is drawn as a small piano roll, repeated phrases are shown
+  once with a count, and notes outside the key are red. tapping a phrase opens it in the
+  track view
+- your range, and whether you're singing or playing sharp or flat on average
 - the chord in each bar
 - the scale and chords for the key, and some common progressions written out in it
 

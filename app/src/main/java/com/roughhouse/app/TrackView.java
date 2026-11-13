@@ -77,6 +77,18 @@ final class TrackView extends View {
         return Math.max(0, Math.min(v, total() - w * fpp * 0.5));
     }
 
+    /** Zooms to about four bars around a point (used when jumping to a phrase). */
+    void focusOn(long frame) {
+        post(() -> {
+            float w = Math.max(1, getWidth() - gutter());
+            double bars = a.s.beatFrames(Engine.SR) * Math.max(1, a.s.beatsPerBar) * 4;
+            fpp = clampFpp(bars / w);
+            left = clampLeft(frame - w * fpp * 0.1);
+            userMoved = true;
+            invalidate();
+        });
+    }
+
     /** Zoom to show the whole track. */
     void fit() {
         fpp = -1;
