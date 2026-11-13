@@ -42,6 +42,9 @@ public class MainActivity extends Activity implements Engine.Listener {
     private static final int REQ_IMPORT = 7, REQ_BACKUP = 8;
     static final String ACTION_RECORD_NOW = "com.roughhouse.app.RECORD_NOW";
     private boolean pendingQuickRecord;
+    /** session mode shows everything; scratch mode keeps to the basics. */
+    boolean session;
+    private TextView modeLabel;
 
     final Handler h = new Handler(Looper.getMainLooper());
     Engine eng;
@@ -79,6 +82,7 @@ public class MainActivity extends Activity implements Engine.Listener {
         Ui.density = getResources().getDisplayMetrics().density;
         Ui.loadFonts(this);
         prefs = getSharedPreferences("rh", MODE_PRIVATE);
+        session = prefs.getBoolean("session", false); // fresh installs start in scratch mode
         root = new File(getFilesDir(), "jams");
         File old = new File(getFilesDir(), "sessions");
         if (!root.exists() && old.isDirectory()) old.renameTo(root);
@@ -93,6 +97,7 @@ public class MainActivity extends Activity implements Engine.Listener {
             if (new File(d, "session.json").exists()) loaded = Jam.load(d);
         }
         openJam(loaded != null ? loaded : Jam.create(root));
+        applyMode();
         if (ACTION_RECORD_NOW.equals(getIntent() == null ? null : getIntent().getAction())) {
             h.post(this::quickRecord);
         } else if (!hasMic()) {
@@ -105,6 +110,26 @@ public class MainActivity extends Activity implements Engine.Listener {
         super.onNewIntent(intent);
         setIntent(intent);
         if (ACTION_RECORD_NOW.equals(intent.getAction())) h.post(this::quickRecord);
+    }
+
+    void setMode(boolean on) {
+        session = on;
+        prefs.edit().putBoolean("session", on).apply();
+        applyMode();
+        note(on ? "session mode: everything is on. tap SESSION MODE to go back to scratch."
+                : "scratch mode: just the basics. tap SCRATCH MODE for the full set.");
+    }
+
+    /** Shows or hides the session-only controls. */
+    private void applyMode() {
+        modeLabel.setText(session ? "SESSION MODE  ·  TAP FOR SCRATCH" : "SCRATCH MODE  ·  TAP FOR SESSION");
+        int vis = session ? View.VISIBLE : View.GONE;
+        sigChip.setVisibility(vis);
+        keyChip.setVisibility(vis);
+        tuneChip.setVisibility(vis);
+        if (!session && eng.monitoring) eng.stopMonitor();
+        if (!session && trackDlg != null) trackDlg.dismiss();
+        refreshAll();
     }
 
     /** "record now" shortcut: fresh jam, recording straight away (no count-in). */
@@ -181,7 +206,10 @@ public class MainActivity extends Activity implements Engine.Listener {
         TextView word = Ui.silk(this, "ROUGHHOUSE", 15, Ui.CREAM);
         word.setLetterSpacing(0.3f);
         brand.addView(word);
-        brand.addView(Ui.silk(this, "MULTITRACK CASSETTE RECORDER", 7.5f, Ui.DIM));
+        modeLabel = Ui.silk(this, "", 7.5f, Ui.AMBER);
+        modeLabel.setPadding(0, dp(2), 0, dp(2));
+        modeLabel.setOnClickListener(v -> setMode(!session));
+        brand.addView(modeLabel);
         top.addView(brand, new LinearLayout.LayoutParams(0, -2, 1));
         TextView jams = Ui.chip(this, "JAMS");
         jams.setOnClickListener(v -> showJams());
@@ -463,7 +491,7 @@ public class MainActivity extends Activity implements Engine.Listener {
         recKey.set(eng.isRecording(), eng.isRecording());
         int i = 0;
         for (Row r : rows) r.refresh(i++);
-        boolean showTuner = eng.monitoring || (eng.isRecording() && eng.recTrack != null && eng.recTrack.vocal);
+        boolean showTuner = session && (eng.monitoring || (eng.isRecording() && eng.recTrack != null && eng.recTrack.vocal));
         tuner.setVisibility(showTuner ? View.VISIBLE : View.GONE);
         vuPair.setVisibility(showTuner ? View.INVISIBLE : View.VISIBLE);
         updateDeck();
@@ -1050,9 +1078,13 @@ public class MainActivity extends Activity implements Engine.Listener {
         if (eng.isRecording()) return;
         ArrayList<CharSequence> items = new ArrayList<>();
         ArrayList<Runnable> acts = new ArrayList<>();
-        items.add("open track view");
-        acts.add(() -> openTrack(t));
-        if (t.analysis != null) {
+        if (session) {
+            items.add("open track view");
+            acts.add(() -> openTrack(t));
+        }
+        if (!session) {
+            // scratch: nothing analysis-related
+        } else if (t.analysis != null) {
             items.add("analysis…");
             acts.add(() -> showAnalysisMenu(t));
             items.add(t.showNotes ? "hide notes on the lane" : "show notes on the lane");
@@ -1065,8 +1097,12 @@ public class MainActivity extends Activity implements Engine.Listener {
             items.add("edit…");
             acts.add(() -> showEditMenu(t));
         }
-        items.add(t.vocal ? "pitch monitor: on (vocal track)" : "pitch monitor: off");
-        acts.add(() -> { t.vocal = !t.vocal; save(); refreshAll(); note(t.vocal ? "the tuner will show while recording this track." : "pitch monitor off for this track."); });
+        items.add("effects");
+        acts.add(() -> showFx(t));
+        if (session) {
+            items.add(t.vocal ? "pitch monitor: on (vocal track)" : "pitch monitor: off");
+            acts.add(() -> { t.vocal = !t.vocal; save(); refreshAll(); note(t.vocal ? "the tuner will show while recording this track." : "pitch monitor off for this track."); });
+        }
         items.add("rename");
         acts.add(() -> prompt("rename track", t.name, v -> { t.name = v; save(); refreshAll(); }));
         items.add("duplicate");
@@ -1212,25 +1248,25 @@ public class MainActivity extends Activity implements Engine.Listener {
     }
 
     private void showMenu() {
-        String[] items = {"export jam…", "import audio…", "sections…", "bounce tracks…", "lyrics",
-                "back up or share this jam", "open a jam backup…", "circle of fifths", "settings",
-                "calibrate latency", "rename jam", "delete jam"};
-        list(null, items, w -> {
-            switch (w) {
-                case 0: exportJam(); break;
-                case 1: pickImport(); break;
-                case 2: showSections(); break;
-                case 3: showBounce(); break;
-                case 4: showLyrics(); break;
-                case 5: backupJam(); break;
-                case 6: pickBackup(); break;
-                case 7: showCircle(); break;
-                case 8: showSettings(); break;
-                case 9: calibrate(); break;
-                case 10: renameJam(); break;
-                default: confirmDeleteJam(s.dir, s.name); break;
-            }
-        });
+        ArrayList<CharSequence> items = new ArrayList<>();
+        ArrayList<Runnable> acts = new ArrayList<>();
+        items.add("export jam…"); acts.add(this::exportJam);
+        items.add("import audio…"); acts.add(this::pickImport);
+        items.add("lyrics"); acts.add(this::showLyrics);
+        if (session) {
+            items.add("sections…"); acts.add(this::showSections);
+            items.add("bounce tracks…"); acts.add(this::showBounce);
+            items.add("back up or share this jam"); acts.add(this::backupJam);
+            items.add("open a jam backup…"); acts.add(this::pickBackup);
+            items.add("circle of fifths"); acts.add(this::showCircle);
+        }
+        items.add(session ? "switch to scratch mode (just the basics)" : "switch to session mode (everything)");
+        acts.add(() -> setMode(!session));
+        items.add("settings"); acts.add(this::showSettings);
+        items.add("calibrate latency"); acts.add(this::calibrate);
+        items.add("rename jam"); acts.add(this::renameJam);
+        items.add("delete jam"); acts.add(() -> confirmDeleteJam(s.dir, s.name));
+        list(null, items.toArray(new CharSequence[0]), w -> acts.get(w).run());
     }
 
     private interface StrCb { void on(String v); }
@@ -1482,31 +1518,31 @@ public class MainActivity extends Activity implements Engine.Listener {
         if (eng.isRecording() || t.isEmpty()) return;
         long p = Math.max(0, playhead());
         String at = posText();
-        CharSequence[] items = {
-                "trim everything before the playhead",
-                "trim everything after the playhead",
-                "split at the playhead (the rest goes to a new track)",
-                "move so it starts at the playhead",
-                "nudge earlier or later…",
-                "fade in up to the playhead",
-                "fade out from the playhead",
-        };
-        list("edit " + t.name + " · " + at, items, w -> {
-            switch (w) {
-                case 0: applyEdit(t, Editor.trimBefore(t.data, p), "trimmed before " + at); break;
-                case 1: applyEdit(t, Editor.trimAfter(t.data, p), "trimmed after " + at); break;
-                case 2: split(t, p, at); break;
-                case 3: {
-                    int first = Editor.firstSound(t.data);
-                    if (first < 0) { note("this track is silent."); return; }
-                    applyEdit(t, Editor.shift(t.data, p - first), "moved to start at " + at);
-                    break;
-                }
-                case 4: showNudge(t); break;
-                case 5: applyEdit(t, Editor.fadeInTo(t.data, p), "faded in up to " + at); break;
-                default: applyEdit(t, Editor.fadeOutFrom(t.data, p), "fading out from " + at); break;
-            }
+        ArrayList<CharSequence> items = new ArrayList<>();
+        ArrayList<Runnable> acts = new ArrayList<>();
+        items.add("trim everything before the playhead");
+        acts.add(() -> applyEdit(t, Editor.trimBefore(t.data, p), "trimmed before " + at));
+        items.add("trim everything after the playhead");
+        acts.add(() -> applyEdit(t, Editor.trimAfter(t.data, p), "trimmed after " + at));
+        if (session) {
+            items.add("split at the playhead (the rest goes to a new track)");
+            acts.add(() -> split(t, p, at));
+        }
+        items.add("move so it starts at the playhead");
+        acts.add(() -> {
+            int first = Editor.firstSound(t.data);
+            if (first < 0) { note("this track is silent."); return; }
+            applyEdit(t, Editor.shift(t.data, p - first), "moved to start at " + at);
         });
+        items.add("nudge earlier or later…");
+        acts.add(() -> showNudge(t));
+        if (session) {
+            items.add("fade in up to the playhead");
+            acts.add(() -> applyEdit(t, Editor.fadeInTo(t.data, p), "faded in up to " + at));
+            items.add("fade out from the playhead");
+            acts.add(() -> applyEdit(t, Editor.fadeOutFrom(t.data, p), "fading out from " + at));
+        }
+        list("edit " + t.name + " · " + at, items.toArray(new CharSequence[0]), w -> acts.get(w).run());
     }
 
     private void applyEdit(Track t, short[] nd, String msg) {
@@ -2158,7 +2194,7 @@ public class MainActivity extends Activity implements Engine.Listener {
 
     /** Applies (empty jam) or offers (existing jam) the tempo/key found in an import. */
     private void offerDetected(Track t, Analyzer.Result r, boolean auto) {
-        boolean hasTempo = r != null && r.bpm > 0, hasKey = r != null && r.keyRoot >= 0;
+        boolean hasTempo = r != null && r.bpm > 0, hasKey = session && r != null && r.keyRoot >= 0;
         if (!hasTempo && !hasKey) { note("imported " + t.name + "."); return; }
         if (auto) {
             StringBuilder b = new StringBuilder("imported " + t.name + ".");
@@ -2282,9 +2318,9 @@ public class MainActivity extends Activity implements Engine.Listener {
     private void exportJam() {
         if (s.lengthFrames() == 0) { note("nothing to export yet."); return; }
         Exporter.Format[] fs = Exporter.Format.values();
-        CharSequence[] items = new CharSequence[fs.length + 1];
+        CharSequence[] items = new CharSequence[fs.length + (session ? 1 : 0)];
         for (int i = 0; i < fs.length; i++) items[i] = fs[i].label + "\n" + fs[i].hint;
-        items[fs.length] = "MIDI\nnotes and chords from analyzed tracks";
+        if (session) items[fs.length] = "MIDI\nnotes and chords from analyzed tracks";
         list("export jam as", items, w -> {
             if (w == fs.length) exportMidi();
             else runExport(fs[w]);
