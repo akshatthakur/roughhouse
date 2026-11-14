@@ -11,7 +11,7 @@ included, at **[roughhouse.akshatthakur.com](https://roughhouse.akshatthakur.com
 versions do the same things. they record at 48 kHz, with mono tracks and a stereo mix, and
 each minute of a track takes about 5.8 MB.
 
-created by Akshat Thakur. currently free to use since I have a day job.
+currently free to use since I have a day job. hopefully I'm employed for the next while so folks can have this free forever.
 
 ## two modes
 
