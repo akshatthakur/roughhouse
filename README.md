@@ -17,10 +17,10 @@ on them. the line under the ROUGHHOUSE name shows which one you're in, and tappi
 switches. you can also switch under *•••*. a fresh install starts in scratch mode.
 
 scratch mode keeps recording and playback, the timeline, tracks with mute, solo and effects,
-the click and tempo, UNDO, jams, importing, exporting audio, lyrics, and simple editing (trim
+the click and tempo, undo, jams, importing, exporting audio, lyrics, and simple editing (trim
 and move). tapping a lane opens its menu.
 
-session mode adds everything else in this readme: time signature, KEY and the circle of
+session mode adds everything else in this readme: time signature, key and the circle of
 fifths, the tuner, analysis and the track view, splitting and fades, sections, bouncing,
 MIDI export and backups. tapping a lane opens the track view.
 
