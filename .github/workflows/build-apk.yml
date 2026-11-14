@@ -17,10 +17,29 @@ jobs:
         with:
           distribution: temurin
           java-version: '17'
+      - name: Unpack the signing key
+        env:
+          RH_KEYSTORE_B64: ${{ secrets.RH_KEYSTORE_B64 }}
+          RH_STORE_PASSWORD: ${{ secrets.RH_STORE_PASSWORD }}
+        run: |
+          if [ -z "$RH_KEYSTORE_B64" ] || [ -z "$RH_STORE_PASSWORD" ]; then
+            echo "::error::Add the RH_KEYSTORE_B64 and RH_STORE_PASSWORD secrets (repo Settings > Secrets and variables > Actions). Without them the APK would be signed with a throwaway key and wouldn't install over the previous version."
+            exit 1
+          fi
+          echo "$RH_KEYSTORE_B64" | tr -d ' \n\r' | base64 -d > "$RUNNER_TEMP/rh.jks"
       - name: Build release APK
-        run: chmod +x gradlew && ./gradlew assembleRelease --no-daemon
+        env:
+          RH_STORE_PASSWORD: ${{ secrets.RH_STORE_PASSWORD }}
+        run: |
+          export RH_KEYSTORE_FILE="$RUNNER_TEMP/rh.jks"
+          chmod +x gradlew && ./gradlew assembleRelease --no-daemon
+          rm -f "$RH_KEYSTORE_FILE"
       - name: Rename
         run: cp app/build/outputs/apk/release/app-release.apk Roughhouse.apk
+      - name: Show signing certificate
+        run: |
+          APKSIGNER=$(ls $ANDROID_HOME/build-tools/*/apksigner | sort -V | tail -1)
+          $APKSIGNER verify --print-certs Roughhouse.apk | grep -i "SHA-256" 
       - uses: actions/upload-artifact@v4
         with:
           name: Roughhouse-apk
