@@ -852,21 +852,19 @@ class App {
     add('calibrate latency', () => this.calibrate());
     add('rename jam', () => this.renameJam());
     add('delete jam', () => this.confirmDeleteJam(this.s.id, this.s.name));
-    add('about Roughhouse', () => this.showAbout());
+    add('about', () => this.showAbout());
     list(null, items, w => acts[w]());
   }
 
   showAbout() {
     const l = body();
-    para(l, 'a multitrack recorder for sketching songs: record, overdub, loop, and let it find the tempo, key, notes and chords.', 14);
-    para(l, 'everything stays in this browser on this device. back up a jam (session mode, •••) to move it to another device or to the Android app.', 13, 'dim');
-    para(l, 'add it to your home screen to use it like an app. space plays and stops, R records, Home rewinds, L loops, C clicks.', 13, 'dim');
-    const a = el('a', 'link', 'Android version and source on GitHub');
-    a.href = 'https://github.com/akshatthakur/roughhouse';
+    para(l, 'created by Akshat Thakur. currently free to use since I have a day job.', 15);
+    const a = el('a', 'link', 'akshatthakur.com');
+    a.href = 'https://www.akshatthakur.com';
     a.target = '_blank';
     a.rel = 'noopener';
     l.appendChild(a);
-    dialog({ title: 'Roughhouse', body: l, buttons: [{ label: 'DONE' }] });
+    dialog({ title: 'about Roughhouse', body: l, buttons: [{ label: 'DONE' }] });
   }
 
   renameJam() { prompt('rename jam', this.s.name, v => { this.s.name = v; this.save(); this.refreshAll(); }); }

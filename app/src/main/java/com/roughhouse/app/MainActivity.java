@@ -1389,7 +1389,14 @@ public class MainActivity extends Activity implements Engine.Listener {
         items.add("calibrate latency"); acts.add(this::calibrate);
         items.add("rename jam"); acts.add(this::renameJam);
         items.add("delete jam"); acts.add(() -> confirmDeleteJam(s.dir, s.name));
+        items.add("about"); acts.add(this::showAbout);
         list(null, items.toArray(new CharSequence[0]), w -> acts.get(w).run());
+    }
+
+    private void showAbout() {
+        show(dlg("about Roughhouse")
+                .setMessage("created by Akshat Thakur. currently free to use since I have a day job.")
+                .setPositiveButton("DONE", null));
     }
 
     private interface StrCb { void on(String v); }
