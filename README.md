@@ -1,14 +1,17 @@
 # Roughhouse
 
-a multitrack recorder for Android that looks like an old cassette 4-track. you hit REC
-and play, and every take lands on its own track.
+a multitrack recorder that looks like an old cassette 4-track. you hit REC and play, and
+every take lands on its own track.
 
-i made it for getting songs down quickly. once something's recorded, it can also work out
+I made it for getting songs down quickly. once something's recorded, it can also work out
 the key and tempo, and show you the notes and chords you played.
 
-it's written in Java and runs on Android 10 and up. it records at 48 kHz, with mono tracks
-and a stereo mix. there's no limit on tracks apart from your phone's memory, and each
-minute of a track takes about 5.8 MB.
+it comes as an Android app, and as a web app that works on any phone or computer, iPhones
+included, at **[roughhouse.akshatthakur.com](https://roughhouse.akshatthakur.com)**. both
+versions do the same things. they record at 48 kHz, with mono tracks and a stereo mix, and
+each minute of a track takes about 5.8 MB.
+
+created by Akshat Thakur. currently free to use since I have a day job.
 
 ## two modes
 
@@ -24,7 +27,31 @@ session mode adds everything else in this readme: time signature, key and the ci
 fifths, the tuner, analysis and the track view, splitting and fades, sections, bouncing,
 MIDI export and backups. tapping a lane opens the track view.
 
-## installing
+## using it in your browser
+
+1. open **[roughhouse.akshatthakur.com](https://roughhouse.akshatthakur.com)** in Chrome,
+   Safari or Edge.
+2. press REC. the first time, your browser asks if Roughhouse can use the microphone. say yes.
+3. to keep it like an app: on an iPhone, tap the share button, then *add to home screen*. on
+   Android, open the browser menu and tap *add to home screen*. on a computer, Chrome and
+   Edge show an install button in the address bar.
+
+a few things worth knowing:
+- your jams are saved in the browser on that device, not online. clearing the site's data
+  deletes them, so back up anything you care about with *••• > back up or share this jam*
+  (in session mode). a backup opens in the web app or the Android app.
+- keep the screen on and Roughhouse in front while you record. phones can pause a page in
+  the background, and that stops the tape.
+- for overdubs, use wired headphones or the speaker, and run *••• > calibrate latency* once
+  on each device.
+- on a computer, wherever this readme says long-press, right-click instead. the space bar
+  plays and stops, R records, Home rewinds, L turns the loop on or off and C turns the click
+  on or off.
+- exports and backups come up as a download, or in your phone's share sheet.
+- M4A export only shows up in browsers that can make it. WAV, FLAC, MP3 and MIDI work
+  everywhere.
+
+## installing on Android
 
 1. on your Android phone, open this link:
    **https://github.com/akshatthakur/roughhouse/releases/latest/download/Roughhouse.apk**
@@ -133,8 +160,9 @@ sometimes half or double the real one, so there are buttons to fix that.
 
 ## exporting
 
-*••• > export jam* renders the mix with its effects, saves it to `Music/Roughhouse` and
-opens the share sheet.
+*••• > export jam* renders the mix with its effects. the Android app saves it to
+`Music/Roughhouse` and opens the share sheet. the web app downloads it or opens the share
+sheet.
 
 | format | notes |
 | --- | --- |
@@ -150,7 +178,7 @@ opens the share sheet.
 analysis into one `.roughhouse.zip` file in `Download/Roughhouse`, and opens the share sheet.
 *••• > open a jam backup* brings one back as a new jam.
 
-## recording in the background
+## recording in the background (Android)
 
 the tape keeps rolling if the screen turns off or you switch to another app. a notification
 shows that Roughhouse is recording or playing, with a STOP button. if a call comes in,
@@ -199,6 +227,10 @@ app/src/main/java/com/roughhouse/app/
 app/src/main/java/mp3, mpg   LAME MP3 encoder, Java port (LGPL)
 app/src/main/res/font        TeX Gyre Heros and Termes, similar to Helvetica and Times
 licenses/                    licence texts for the encoder and fonts
+web/src/                     the web app: the same engine, analysis and file formats in
+                             JavaScript, with the mixer in an AudioWorklet
+web/public/                  the page, styles, icons and offline support
+web/test/                    checks for the exports, analysis and backups
 ```
 
 ## credits
