@@ -26,22 +26,17 @@ MIDI export and backups. tapping a lane opens the track view.
 
 ## installing
 
-every push to `main` builds the app and puts it in the **latest** release:
+1. on your Android phone, open this link:
+   **https://github.com/akshatthakur/roughhouse/releases/latest/download/Roughhouse.apk**
+2. when the download finishes, tap the file to open it.
+3. if your phone says it can't install apps from this source, tap *settings*, turn on
+   *allow from this source*, then go back.
+4. tap *install*, then *open*.
 
-**https://github.com/akshatthakur/roughhouse/releases/latest/download/Roughhouse.apk**
+Roughhouse is now on your home screen. to record something straight away, press and hold
+its icon and tap *record now*.
 
-open that link on your phone and allow installs from your browser when Android asks.
-
-once it's installed, long-press the app icon and choose *record now* to start a new jam and
-record straight away.
-
-every build is signed with the same key, so a new version installs over the old one and
-your jams stay put. the key is kept in the repo's secrets (`RH_KEYSTORE_B64` and
-`RH_STORE_PASSWORD`), not in the code. builds stop with an error if they're missing.
-
-to build it yourself, open the folder in Android Studio and use *Build > Build APK(s)*,
-or run `./gradlew assembleRelease`. to sign it with the release key, set `RH_KEYSTORE_FILE`
-(the path to the key file) and `RH_STORE_PASSWORD` first.
+to update, open the same link and install again. your jams stay where they are.
 
 ## the deck
 
