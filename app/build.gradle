@@ -10,15 +10,30 @@ android {
         applicationId 'com.roughhouse.app'
         minSdk 29
         targetSdk 34
-        versionCode 1
-        versionName '1.0'
+        // goes up with every CI build so Android treats each one as an update
+        versionCode((System.getenv('GITHUB_RUN_NUMBER') ?: '1').toInteger())
+        versionName "1.0." + (System.getenv('GITHUB_RUN_NUMBER') ?: '0')
+    }
+
+    // One permanent key, so each new build installs over the last one.
+    // CI writes the key (GitHub secret RH_KEYSTORE_B64) to the file named in
+    // RH_KEYSTORE_FILE; its password comes from RH_STORE_PASSWORD.
+    def storePw = System.getenv('RH_STORE_PASSWORD')
+    def storePath = System.getenv('RH_KEYSTORE_FILE')
+    if (!storePath) storePw = null
+    signingConfigs {
+        release {
+            storeFile storePath ? file(storePath) : null
+            storePassword storePw
+            keyAlias 'roughhouse'
+            keyPassword storePw
+        }
     }
 
     buildTypes {
         release {
             minifyEnabled false
-            // Signed with the debug key so the APK installs directly (sideload).
-            signingConfig signingConfigs.debug
+            signingConfig storePw ? signingConfigs.release : signingConfigs.debug
         }
     }
 

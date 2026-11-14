@@ -35,8 +35,13 @@ open that link on your phone and allow installs from your browser when Android a
 once it's installed, long-press the app icon and choose *record now* to start a new jam and
 record straight away.
 
+every build is signed with the same key, so a new version installs over the old one and
+your jams stay put. the key is kept in the repo's secrets (`RH_KEYSTORE_B64` and
+`RH_STORE_PASSWORD`), not in the code. builds stop with an error if they're missing.
+
 to build it yourself, open the folder in Android Studio and use *Build > Build APK(s)*,
-or run `./gradlew assembleRelease`.
+or run `./gradlew assembleRelease`. to sign it with the release key, set `RH_KEYSTORE_FILE`
+(the path to the key file) and `RH_STORE_PASSWORD` first.
 
 ## the deck
 
